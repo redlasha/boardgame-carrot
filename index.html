@@ -83,19 +83,24 @@
 
     /* Stack ghost layers */
     .sl3,.sl2{position:absolute;border-radius:13px;pointer-events:none;}
-    .sl3{top:-6px;left:3px;background:rgba(27,94,32,.18);}
-    .sl2{top:-3px;left:1.5px;background:rgba(46,125,50,.28);}
+    .sl3{top:-6px;left:3px;background:rgba(165,214,167,.55);}
+    .sl2{top:-3px;left:1.5px;background:rgba(200,230,201,.7);}
 
     /* Card back */
     .c-back{
       position:absolute;inset:0;border-radius:13px;
-      background:linear-gradient(145deg,#1B5E20,#2E7D32,#388E3C);
-      border:2.5px solid #1a5e20;
+      background:
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'><g fill='%232E7D32' fill-opacity='0.20'><ellipse cx='10' cy='12' rx='2' ry='5'/><ellipse cx='15' cy='12' rx='2' ry='5'/><circle cx='12.5' cy='19' r='4.5'/></g><path d='M36,36 L42,36 L39,48 Z' fill='%23FF7043' fill-opacity='0.32'/><path d='M36,36 L37.5,32 L39,36 L40.5,32 L42,36 Z' fill='%232E7D32' fill-opacity='0.32'/></svg>") repeat,
+        linear-gradient(145deg,#E8F5E9,#C8E6C9,#A5D6A7);
+      background-size:56px 56px,auto;
+      border:2.5px solid #66BB6A;
       display:flex;flex-direction:column;align-items:center;justify-content:center;
     }
-    .c-back-ring{position:absolute;inset:8px;border:1.5px solid rgba(255,255,255,.12);border-radius:8px;}
-    .c-back-ico{font-size:26px;z-index:1;}
-    .c-back-txt{font-size:7px;color:rgba(255,255,255,.22);letter-spacing:2px;z-index:1;margin-top:3px;}
+    .c-back-ring{position:absolute;inset:8px;border:1.5px solid rgba(76,175,80,.35);border-radius:8px;}
+    .c-back-ico{font-size:32px;z-index:1;filter:drop-shadow(1px 2px 2px rgba(46,125,50,.25));}
+    .c-back-row{display:flex;align-items:center;gap:5px;z-index:1;margin-top:4px;}
+    .c-back-mini{font-size:11px;}
+    .c-back-txt{font-size:7px;color:rgba(46,125,50,.7);letter-spacing:2px;z-index:1;font-weight:800;}
 
     /* Empty/shuffle */
     .c-empty{
@@ -266,6 +271,49 @@ const TEMPLATE = [
 
 let deck=[], drawn=null, counts={}, chips=[], phase='idle', debugOpen=false;
 let CW=130, CH=190;
+let audioCtx=null;
+
+function initAudio(){
+  if(audioCtx) return;
+  const Ctx=window.AudioContext||window.webkitAudioContext;
+  if(!Ctx) return;
+  try{ audioCtx=new Ctx(); }catch(_){}
+}
+function playFlipSound(){
+  if(!audioCtx) initAudio();
+  if(!audioCtx) return;
+  if(audioCtx.state==='suspended'){ audioCtx.resume().catch(()=>{}); }
+  const t=audioCtx.currentTime;
+
+  // Layer A: filtered noise "whoosh"
+  const dur=0.12;
+  const buf=audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate*dur), audioCtx.sampleRate);
+  const ch=buf.getChannelData(0);
+  for(let i=0;i<ch.length;i++) ch[i]=(Math.random()*2-1);
+  const noise=audioCtx.createBufferSource(); noise.buffer=buf;
+  const filt=audioCtx.createBiquadFilter();
+  filt.type='bandpass'; filt.Q.value=1.2;
+  filt.frequency.setValueAtTime(800,t);
+  filt.frequency.exponentialRampToValueAtTime(1800,t+0.09);
+  const ng=audioCtx.createGain();
+  ng.gain.setValueAtTime(0.0001,t);
+  ng.gain.exponentialRampToValueAtTime(0.18,t+0.012);
+  ng.gain.exponentialRampToValueAtTime(0.0001,t+0.11);
+  noise.connect(filt); filt.connect(ng); ng.connect(audioCtx.destination);
+  noise.start(t); noise.stop(t+dur);
+
+  // Layer B: short pitch "snap"
+  const osc=audioCtx.createOscillator();
+  osc.type='triangle';
+  osc.frequency.setValueAtTime(1500,t+0.04);
+  osc.frequency.exponentialRampToValueAtTime(500,t+0.1);
+  const og=audioCtx.createGain();
+  og.gain.setValueAtTime(0.0001,t+0.04);
+  og.gain.exponentialRampToValueAtTime(0.08,t+0.05);
+  og.gain.exponentialRampToValueAtTime(0.0001,t+0.1);
+  osc.connect(og); og.connect(audioCtx.destination);
+  osc.start(t+0.04); osc.stop(t+0.11);
+}
 
 function shuffle(a){
   a=[...a];
@@ -306,9 +354,9 @@ function renderDeck(){
   }
 
   if(phase==='shuffling'){
-    const bgs=['linear-gradient(135deg,#43A047,#1B5E20)','linear-gradient(135deg,#2E7D32,#388E3C)','linear-gradient(135deg,#388E3C,#1B5E20)'];
+    const bgs=['linear-gradient(135deg,#A5D6A7,#66BB6A)','linear-gradient(135deg,#C8E6C9,#81C784)','linear-gradient(135deg,#81C784,#A5D6A7)'];
     ['sc1','sc2','sc3'].forEach((c,i)=>{
-      html+=`<div class="${c}" style="position:absolute;inset:0;border-radius:13px;background:${bgs[i]};border:2.5px solid #1a5e20"></div>`;
+      html+=`<div class="${c}" style="position:absolute;inset:0;border-radius:13px;background:${bgs[i]};border:2.5px solid #66BB6A"></div>`;
     });
     slot.classList.add('shuffling');
   } else {
@@ -323,7 +371,7 @@ function renderDeck(){
   } else {
     hint.textContent='탭하여 뽑기';
     slot.classList.remove('pulsing');
-    html+=`<div class="c-back"><div class="c-back-ring"></div><div class="c-back-ico">🃏</div><div class="c-back-txt">CARROT</div></div>`;
+    html+=`<div class="c-back"><div class="c-back-ring"></div><div class="c-back-ico">🐰</div><div class="c-back-row"><span class="c-back-mini">🥕</span><span class="c-back-txt">CARROT</span><span class="c-back-mini">🥕</span></div></div>`;
     html+=`<div class="deck-badge">${deck.length}</div>`;
   }
   slot.innerHTML=html;
@@ -411,6 +459,7 @@ function draw(){
     return;
   }
   phase='flipping';
+  playFlipSound();
   const card=deck.pop();
   drawn=card;
   counts[card.type]=(counts[card.type]||0)+1;
@@ -452,6 +501,7 @@ async function lockLandscape(){
 
 async function startApp(){
   const overlay=document.getElementById('start-overlay');
+  initAudio();
   await enterFullscreen();
   const locked=await lockLandscape();
   if(!locked) document.body.classList.add('force-rotate');
