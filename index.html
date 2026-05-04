@@ -23,6 +23,39 @@
       padding-right:env(safe-area-inset-right);
     }
 
+    /* ── Start overlay ── */
+    #start-overlay{
+      position:fixed;inset:0;z-index:200;
+      background:radial-gradient(ellipse at center,#1a3a1a 0%,#0f2010 70%);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:18px;cursor:pointer;
+    }
+    #start-overlay.hidden{display:none;}
+    #start-ico{font-size:64px;animation:bounce 1.6s ease-in-out infinite;}
+    #start-title{font-size:22px;font-weight:900;color:#66BB6A;letter-spacing:2px;}
+    #start-hint{font-size:13px;font-weight:700;color:rgba(255,255,255,.45);letter-spacing:1px;}
+    #start-tap{
+      margin-top:6px;padding:10px 22px;
+      background:linear-gradient(135deg,#43A047,#2E7D32);
+      color:white;font-size:15px;font-weight:900;letter-spacing:3px;
+      border-radius:10px;box-shadow:0 4px 16px rgba(67,160,71,.35);
+      animation:pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes bounce{
+      0%,100%{transform:translateY(0);}
+      50%{transform:translateY(-10px);}
+    }
+
+    /* ── Portrait rotation fallback (when orientation lock unsupported) ── */
+    @media (orientation:portrait){
+      body.force-rotate #app{
+        position:fixed;top:50%;left:50%;
+        width:100dvh;height:100dvw;
+        transform:translate(-50%,-50%) rotate(90deg);
+        transform-origin:center center;
+      }
+    }
+
     /* ── Top bar ── */
     #topbar{
       flex-shrink:0;height:32px;
@@ -209,6 +242,13 @@
   <button class="dbg-close" onclick="toggleDebug()">▲ 닫기</button>
 </div>
 
+<div id="start-overlay" onclick="startApp()">
+  <div id="start-ico">🥕</div>
+  <div id="start-title">당근 카드뽑기</div>
+  <div id="start-tap">탭하여 시작</div>
+  <div id="start-hint">전체화면 · 가로모드</div>
+</div>
+
 <script>
 const INFO = {
   carrot:{ label:'당근!', emoji:'🥕', color:'#BF360C', border:'#FF6D00' },
@@ -388,12 +428,46 @@ function toggleDebug(){
 }
 
 function init(){
-  deck=makeDeck(); drawn=null; counts={}; chips={}=[]; phase='idle';
+  deck=makeDeck(); drawn=null; counts={}; chips=[]; phase='idle';
   calcCardSize(); renderDeck(); renderDrawn(); updateBar();
+}
+
+async function enterFullscreen(){
+  const el=document.documentElement;
+  const req=el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen;
+  if(req){
+    try{ await req.call(el,{navigationUI:'hide'}); }catch(_){}
+  }
+}
+
+async function lockLandscape(){
+  try{
+    if(screen.orientation&&screen.orientation.lock){
+      await screen.orientation.lock('landscape');
+      return true;
+    }
+  }catch(_){}
+  return false;
+}
+
+async function startApp(){
+  const overlay=document.getElementById('start-overlay');
+  await enterFullscreen();
+  const locked=await lockLandscape();
+  if(!locked) document.body.classList.add('force-rotate');
+  overlay.classList.add('hidden');
+  setTimeout(()=>{ calcCardSize(); renderDeck(); renderDrawn(); },120);
 }
 
 window.addEventListener('resize',()=>{ calcCardSize(); renderDeck(); renderDrawn(); });
 window.addEventListener('orientationchange',()=>{ setTimeout(()=>{ calcCardSize(); renderDeck(); renderDrawn(); },200); });
+
+// Re-show start overlay if user exits fullscreen
+document.addEventListener('fullscreenchange',()=>{
+  if(!document.fullscreenElement){
+    document.getElementById('start-overlay').classList.remove('hidden');
+  }
+});
 
 // SW registration
 if('serviceWorker' in navigator){
