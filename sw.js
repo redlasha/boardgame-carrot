@@ -1,6 +1,6 @@
 // Bump APP_VERSION on every deploy — this invalidates the cache and forces
 // installed PWAs to pick up the latest index.html/manifest.json.
-const APP_VERSION = '2026.05.04.1';
+const APP_VERSION = '2026.05.04.2';
 const CACHE = `carrot-card-${APP_VERSION}`;
 const ASSETS = ['./index.html', './manifest.json'];
 

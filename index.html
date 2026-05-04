@@ -54,8 +54,20 @@
         width:100dvh;height:100dvw;
         transform:translate(-50%,-50%) rotate(90deg);
         transform-origin:center center;
+        /* Anything inside the rotated parent is composited through that GPU rotation,
+           so isolate this subtree to avoid invalidations leaking out. */
+        will-change:transform;
+        contain:layout paint;
       }
     }
+    /* Under force-rotate (iOS Safari has no orientation.lock), 3D transforms inside the
+       rotated app layer are very expensive — fall back to lighter 2D-only animations. */
+    body.force-rotate .c-face,
+    body.force-rotate .c-face.travel{
+      animation:flipInLite .34s cubic-bezier(.22,1,.36,1) both!important;
+    }
+    body.force-rotate .shuffling .rf{animation-duration:.85s!important;}
+    body.force-rotate .shuffling .rfPress{animation:none!important;}
 
     /* ── Top bar ── */
     #topbar{
@@ -83,11 +95,12 @@
     .card-slot{position:relative;cursor:pointer;flex-shrink:0;transition:transform 90ms ease-out;contain:layout style;}
     #deck-slot{transform:translateZ(0);}
     #deck-slot:active{transform:scale(.955) translate3d(0,2px,0);}
-    #deck-slot.lifting{animation:deckLift .38s cubic-bezier(.4,0,.2,1);will-change:transform;}
+    /* deck-low: cheap radial-gradient glow + opacity-only pulse (was a heavy box-shadow blur).
+       Radial gradient is rasterized once into the layer; only opacity animates → composite-only. */
     #deck-slot.deck-low::after{
-      content:"";position:absolute;inset:-2px;border-radius:15px;pointer-events:none;
-      box-shadow:0 0 22px 4px rgba(239,83,80,.45);
-      opacity:.4;animation:lowPulse 1.6s ease-in-out infinite;will-change:opacity;
+      content:"";position:absolute;inset:-12px;border-radius:20px;pointer-events:none;
+      background:radial-gradient(closest-side,rgba(239,83,80,.42),rgba(239,83,80,0) 72%);
+      opacity:.55;animation:lowPulse 1.6s ease-in-out infinite;
     }
     #deck-slot.shuffling{pointer-events:none;}
 
@@ -143,15 +156,15 @@
     }
     .c-ph-txt{font-size:10px;color:rgba(255,255,255,.15);font-weight:700;}
 
-    /* Card face */
+    /* Card face. Animation is class-driven so force-rotate can override cleanly. */
     .c-face{
       position:absolute;inset:0;border-radius:13px;border:2.5px solid;
       display:flex;flex-direction:column;align-items:center;justify-content:center;
       overflow:hidden;animation:flipIn .46s cubic-bezier(.22,1,.36,1);
-      will-change:transform,opacity;
       backface-visibility:hidden;-webkit-backface-visibility:hidden;
       transform:translateZ(0);
     }
+    .c-face.travel{animation:cardTravel .52s cubic-bezier(.22,1,.36,1) both;}
     .c-badge{
       position:absolute;top:6px;left:6px;
       font-size:8px;font-weight:900;
@@ -178,7 +191,7 @@
       box-shadow:0 2px 8px rgba(239,83,80,.5);
       overflow:hidden;
     }
-    .deck-badge .num{display:inline-block;will-change:transform;}
+    .deck-badge .num{display:inline-block;}
     .deck-badge.changing .num{animation:countSlide .26s cubic-bezier(.22,1,.36,1);}
     .deck-badge.popping{animation:badgePop .42s cubic-bezier(.34,1.56,.64,1);}
 
@@ -220,6 +233,12 @@
       0%{transform:perspective(500px) rotateY(90deg) scale(.88);opacity:0;}
       55%{transform:perspective(500px) rotateY(-4deg) scale(1.02);opacity:1;}
       100%{transform:perspective(500px) rotateY(0) scale(1);opacity:1;}
+    }
+    /* 2D-only fallback used inside force-rotate parent (cheaper to composite through rotation) */
+    @keyframes flipInLite{
+      0%  {opacity:0;transform:scale(.86) translateZ(0);}
+      60% {opacity:1;transform:scale(1.04) translateZ(0);}
+      100%{opacity:1;transform:scale(1)  translateZ(0);}
     }
     /* Card travels from deck → drawn slot, with rotation + arc + overshoot */
     @keyframes cardTravel{
@@ -321,7 +340,7 @@
   <div id="start-title">당근 카드뽑기</div>
   <div id="start-tap">탭하여 시작</div>
   <div id="start-hint">전체화면 · 가로모드</div>
-  <div id="start-version">v2026.05.04.1</div>
+  <div id="start-version">v2026.05.04.2</div>
 </div>
 
 <script>
@@ -514,6 +533,8 @@ function renderDeck(opts){
 
 // Lightweight update path: only mutates the badge count and ghost-layer visibility,
 // so the card-back DOM stays put and animations don't get stomped by an innerHTML rebuild.
+// Uses Web Animations API for the count slide / pop so we no longer trigger a synchronous
+// `void offsetWidth` reflow on every draw (was causing visible micro-stutters).
 function updateDeckCount(opts){
   opts = opts || {};
   const slot=document.getElementById('deck-slot');
@@ -521,12 +542,37 @@ function updateDeckCount(opts){
   if(!badge){ renderDeck(opts); return; }
   const numEl=badge.querySelector('.num');
 
-  badge.classList.remove('changing','popping');
-  // restart animation by forcing a reflow on the .num element only (cheaper than the slot)
-  void numEl.offsetWidth;
-  if(opts.badgePop) badge.classList.add('popping');
-  else if(opts.countChanged) badge.classList.add('changing');
   numEl.textContent=deck.length;
+
+  if(numEl.animate){
+    if(opts.badgePop){
+      badge.getAnimations().forEach(a=>a.cancel());
+      badge.animate(
+        [
+          {transform:'scale(.2)',opacity:0},
+          {transform:'scale(1.25)',opacity:1,offset:.55},
+          {transform:'scale(1)',opacity:1}
+        ],
+        {duration:420,easing:'cubic-bezier(.34,1.56,.64,1)'}
+      );
+    } else if(opts.countChanged){
+      numEl.getAnimations().forEach(a=>a.cancel());
+      numEl.animate(
+        [
+          {transform:'translate3d(0,-110%,0)',opacity:0},
+          {transform:'translate3d(0,4%,0)',opacity:1,offset:.6},
+          {transform:'translate3d(0,0,0)',opacity:1}
+        ],
+        {duration:260,easing:'cubic-bezier(.22,1,.36,1)'}
+      );
+    }
+  } else {
+    // Legacy fallback (browsers without Element.animate)
+    badge.classList.remove('changing','popping');
+    void numEl.offsetWidth;
+    if(opts.badgePop) badge.classList.add('popping');
+    else if(opts.countChanged) badge.classList.add('changing');
+  }
 
   const sl3=slot.querySelector('.sl3');
   const sl2=slot.querySelector('.sl2');
@@ -570,21 +616,24 @@ function renderDrawn(opts){
            <div class="c-dots">${ds}</div>`;
   }
 
-  // Card travels from deck slot → drawn slot. Compute the delta (deck is on the left).
-  // Falls back to plain flipIn when not triggered by an actual draw (e.g. resize/redraw).
-  let anim = 'flipIn .46s cubic-bezier(.22,1,.36,1)';
+  // Card travels from deck slot → drawn slot in landscape. In force-rotate (iOS portrait
+   // fallback), skip the geometry read AND the cardTravel animation: getBoundingClientRect
+   // returns post-rotation coords so the --tx delta would be wrong, and the
+   // perspective+rotateY composite through the rotated parent is the main cause of jank.
   let txStyle = '';
-  if(opts.travel){
+  let cls = 'c-face';
+  const inForceRotate = document.body.classList.contains('force-rotate');
+  if(opts.travel && !inForceRotate){
     const deckEl=document.getElementById('deck-slot');
     const drawnEl=document.getElementById('drawn-slot');
     const dr=deckEl.getBoundingClientRect();
     const dw=drawnEl.getBoundingClientRect();
     const tx = Math.round(dr.left - dw.left); // negative = deck is to the left
     txStyle = `--tx:${tx}px;`;
-    anim = 'cardTravel .52s cubic-bezier(.22,1,.36,1) both';
+    cls = 'c-face travel';
   }
 
-  slot.innerHTML=`<div class="c-face" style="${txStyle}background:${bg};border-color:${info.border};animation:${anim}">
+  slot.innerHTML=`<div class="${cls}" style="${txStyle}background:${bg};border-color:${info.border}">
     ${clouds}
     <div class="c-badge" style="background:${info.border}">${info.label}</div>
     ${inner}
@@ -626,7 +675,9 @@ function draw(){
   if(deck.length===0){
     // Shuffle flow: compress → riffle → settle → reveal
     phase='shuffling';
-    playShuffleSound();
+    // Defer audio synthesis off the gesture's critical paint path (the noise-buffer
+    // generation loop is ~17K samples and was delaying the first animation frame).
+    setTimeout(playShuffleSound,0);
     vibrate([30,60,30,60,40]);
     renderDeck();
     setTimeout(()=>{
@@ -640,7 +691,8 @@ function draw(){
     return;
   }
   phase='flipping';
-  playFlipSound();
+  // Defer audio so the tap-to-paint latency stays minimal.
+  setTimeout(playFlipSound,0);
   vibrate(8);
   const card=deck.pop();
   drawn=card;
@@ -653,14 +705,25 @@ function draw(){
   if(deck.length===0) renderDeck({countChanged:true});
   else updateDeckCount({countChanged:true});
   updateBar();
-  // Subtle lift on the deck the moment a card is pulled away.
+  // Subtle lift on the deck the moment a card is pulled away. Web Animations API
+  // avoids the `void offsetWidth` forced reflow that used to interrupt the compositor.
   const deckEl=document.getElementById('deck-slot');
-  deckEl.classList.remove('lifting');
-  // force reflow so animation restarts even if user taps rapidly
-  void deckEl.offsetWidth;
-  deckEl.classList.add('lifting');
+  if(deckEl.animate){
+    deckEl.getAnimations({subtree:false}).forEach(a=>{
+      if(a.id==='deckLift') a.cancel();
+    });
+    const a=deckEl.animate(
+      [
+        {transform:'translate3d(0,0,0)'},
+        {transform:'translate3d(0,-6px,0)',offset:.4},
+        {transform:'translate3d(0,0,0)'}
+      ],
+      {duration:380,easing:'cubic-bezier(.4,0,.2,1)'}
+    );
+    a.id='deckLift';
+  }
   if(debugOpen) renderDebug();
-  setTimeout(()=>{ phase='idle'; deckEl.classList.remove('lifting'); },420);
+  setTimeout(()=>{ phase='idle'; },420);
 }
 
 function toggleDebug(){
