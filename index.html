@@ -34,6 +34,7 @@
     #start-ico{font-size:64px;animation:bounce 1.6s ease-in-out infinite;}
     #start-title{font-size:22px;font-weight:900;color:#66BB6A;letter-spacing:2px;}
     #start-hint{font-size:13px;font-weight:700;color:rgba(255,255,255,.45);letter-spacing:1px;}
+    #start-version{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:11px;font-weight:700;color:rgba(255,255,255,.32);letter-spacing:1.5px;font-family:ui-monospace,Menlo,Consolas,monospace;}
     #start-tap{
       margin-top:6px;padding:10px 22px;
       background:linear-gradient(135deg,#43A047,#2E7D32);
@@ -320,6 +321,7 @@
   <div id="start-title">당근 카드뽑기</div>
   <div id="start-tap">탭하여 시작</div>
   <div id="start-hint">전체화면 · 가로모드</div>
+  <div id="start-version">v2026.05.04.1</div>
 </div>
 
 <script>
@@ -711,9 +713,29 @@ document.addEventListener('fullscreenchange',()=>{
   }
 });
 
-// SW registration
+// SW registration — reload once when a new worker takes control so the
+// freshly-deployed index.html is rendered instead of the cached one.
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
+  let reloading=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(reloading) return;
+    reloading=true;
+    location.reload();
+  });
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./sw.js').then(reg=>{
+      reg.update().catch(()=>{});
+      reg.addEventListener('updatefound',()=>{
+        const nw=reg.installing;
+        if(!nw) return;
+        nw.addEventListener('statechange',()=>{
+          if(nw.state==='installed' && navigator.serviceWorker.controller){
+            nw.postMessage({type:'SKIP_WAITING'});
+          }
+        });
+      });
+    }).catch(()=>{});
+  });
 }
 
 init();
