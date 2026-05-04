@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="당근카드">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1a3a1a">
+  <link rel="manifest" href="manifest.json">
+  <title>당근 카드뽑기</title>
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
+    html,body{width:100%;height:100%;background:#0f2010;overflow:hidden;font-family:'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;touch-action:manipulation;}
+
+    #app{
+      width:100vw;height:100dvh;
+      display:flex;flex-direction:column;
+      padding-top:env(safe-area-inset-top);
+      padding-bottom:env(safe-area-inset-bottom);
+      padding-left:env(safe-area-inset-left);
+      padding-right:env(safe-area-inset-right);
+    }
+
+    /* ── Top bar ── */
+    #topbar{
+      flex-shrink:0;height:32px;
+      display:flex;align-items:center;gap:8px;padding:0 10px;
+      background:rgba(0,0,0,0.45);
+    }
+    #title{font-size:13px;font-weight:900;color:#66BB6A;white-space:nowrap;}
+    #prog-wrap{flex:1;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;}
+    #prog-fill{height:100%;width:0%;background:linear-gradient(90deg,#43A047,#81C784);border-radius:3px;transition:width .3s ease;}
+    #count-lbl{font-size:11px;font-weight:800;color:rgba(255,255,255,0.38);white-space:nowrap;}
+    #dbg-btn{font-size:15px;cursor:pointer;opacity:0.25;transition:opacity .2s;padding:0 2px;flex-shrink:0;}
+    #dbg-btn.on{opacity:1;}
+
+    /* ── Main layout ── */
+    #main{
+      flex:1;display:flex;align-items:center;justify-content:center;
+      gap:clamp(12px,3vw,28px);padding:6px 14px;
+    }
+    .side{display:flex;flex-direction:column;align-items:center;gap:5px;}
+    .side-lbl{font-size:9px;font-weight:800;color:rgba(255,255,255,0.22);letter-spacing:2px;}
+    .side-hint{font-size:9px;font-weight:700;color:rgba(255,255,255,0.18);height:12px;}
+
+    /* Card slot */
+    .card-slot{position:relative;cursor:pointer;flex-shrink:0;}
+
+    /* Stack ghost layers */
+    .sl3,.sl2{position:absolute;border-radius:13px;pointer-events:none;}
+    .sl3{top:-6px;left:3px;background:rgba(27,94,32,.18);}
+    .sl2{top:-3px;left:1.5px;background:rgba(46,125,50,.28);}
+
+    /* Card back */
+    .c-back{
+      position:absolute;inset:0;border-radius:13px;
+      background:linear-gradient(145deg,#1B5E20,#2E7D32,#388E3C);
+      border:2.5px solid #1a5e20;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+    }
+    .c-back-ring{position:absolute;inset:8px;border:1.5px solid rgba(255,255,255,.12);border-radius:8px;}
+    .c-back-ico{font-size:26px;z-index:1;}
+    .c-back-txt{font-size:7px;color:rgba(255,255,255,.22);letter-spacing:2px;z-index:1;margin-top:3px;}
+
+    /* Empty/shuffle */
+    .c-empty{
+      position:absolute;inset:0;border-radius:13px;
+      background:rgba(255,255,255,.03);border:2px dashed rgba(255,255,255,.15);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    }
+    .c-empty-ico{font-size:28px;}
+    .c-empty-txt{font-size:11px;font-weight:800;color:rgba(255,255,255,.32);}
+
+    /* Drawn placeholder */
+    .c-ph{
+      position:absolute;inset:0;border-radius:13px;
+      background:rgba(255,255,255,.02);border:2px dashed rgba(255,255,255,.08);
+      display:flex;align-items:center;justify-content:center;
+    }
+    .c-ph-txt{font-size:10px;color:rgba(255,255,255,.15);font-weight:700;}
+
+    /* Card face */
+    .c-face{
+      position:absolute;inset:0;border-radius:13px;border:2.5px solid;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      overflow:hidden;animation:flipIn .46s cubic-bezier(.25,.46,.45,.94);
+    }
+    .c-badge{
+      position:absolute;top:6px;left:6px;
+      font-size:8px;font-weight:900;
+      padding:2px 6px;border-radius:4px;color:white;
+    }
+    .c-emoji{z-index:1;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.15));}
+    .c-dots{display:flex;gap:4px;margin-top:7px;z-index:1;}
+    .dot{width:14px;height:10px;border-radius:50%;background:linear-gradient(135deg,#FFE57F,#FFD600);border:1.5px solid #F9A825;}
+    .c-click{
+      margin-top:7px;background:#1a1a1a;color:white;
+      padding:3px 10px;border-radius:4px;
+      font-size:11px;font-weight:900;letter-spacing:2px;
+    }
+    .cloud{position:absolute;background:rgba(255,255,255,.88);border-radius:20px;}
+
+    /* Deck badge */
+    .deck-badge{
+      position:absolute;top:-9px;right:-9px;z-index:10;
+      background:#ef5350;color:white;
+      width:24px;height:24px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:10px;font-weight:900;
+      border:2px solid #0f2010;
+      box-shadow:0 2px 8px rgba(239,83,80,.5);
+    }
+
+    /* Arrow */
+    #arrow{font-size:18px;color:rgba(255,255,255,.18);flex-shrink:0;}
+
+    /* Drawn label */
+    #drawn-lbl{font-size:14px;font-weight:900;min-height:18px;}
+
+    /* ── Debug panel ── */
+    #dbg-panel{
+      position:fixed;left:0;right:0;bottom:-220px;
+      background:rgba(4,10,4,.97);
+      border-top:1px solid rgba(255,255,255,.07);
+      padding:12px 14px 14px;
+      transition:bottom .3s cubic-bezier(.4,0,.2,1);
+      z-index:100;backdrop-filter:blur(14px);
+      padding-bottom:calc(12px + env(safe-area-inset-bottom));
+    }
+    #dbg-panel.open{bottom:0;}
+    #dbg-panel h3{font-size:8px;color:rgba(255,255,255,.18);text-align:center;letter-spacing:3px;margin-bottom:10px;}
+    .dbg-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;}
+    .dbg-card{border-radius:8px;padding:6px 9px;border:1px solid;}
+    .dbg-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+    .dbg-lbl{font-size:11px;font-weight:800;}
+    .dbg-cnt{font-size:12px;font-weight:900;}
+    .dbg-bar{height:3px;border-radius:2px;background:rgba(255,255,255,.07);overflow:hidden;}
+    .dbg-bar-fill{height:100%;border-radius:2px;transition:width .3s;}
+    .dbg-chips{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;}
+    .dbg-chip{font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px;border:1.5px solid;}
+    .dbg-close{
+      display:block;width:100%;margin-top:10px;padding:5px;
+      background:rgba(255,255,255,.05);border:none;border-radius:6px;
+      color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;
+    }
+
+    /* ── Animations ── */
+    @keyframes flipIn{
+      0%{transform:perspective(500px) rotateY(90deg) scale(.88);opacity:0;}
+      55%{transform:perspective(500px) rotateY(-4deg) scale(1.02);opacity:1;}
+      100%{transform:perspective(500px) rotateY(0) scale(1);opacity:1;}
+    }
+    @keyframes lPop{
+      0%{transform:scale(.4);opacity:0;}
+      65%{transform:scale(1.12);opacity:1;}
+      100%{transform:scale(1);opacity:1;}
+    }
+    @keyframes pulse{0%,100%{opacity:.65;}50%{opacity:1;}}
+    @keyframes sc1{
+      0%,100%{transform:translate(0,0) rotate(0deg);}
+      42%{transform:translate(-48px,-60px) rotate(-22deg);}
+      72%{transform:translate(36px,-42px) rotate(11deg);}
+    }
+    @keyframes sc2{
+      0%,100%{transform:translate(0,0) rotate(0deg);}
+      42%{transform:translate(56px,-68px) rotate(18deg);}
+      72%{transform:translate(-32px,-52px) rotate(-14deg);}
+    }
+    @keyframes sc3{
+      0%,100%{transform:translate(0,0) rotate(0deg);}
+      42%{transform:translate(-58px,52px) rotate(24deg);}
+      72%{transform:translate(46px,58px) rotate(-19deg);}
+    }
+    .shuffling .sc1{animation:sc1 1.3s cubic-bezier(.4,0,.2,1) forwards;}
+    .shuffling .sc2{animation:sc2 1.3s cubic-bezier(.4,0,.2,1) forwards;}
+    .shuffling .sc3{animation:sc3 1.3s cubic-bezier(.4,0,.2,1) forwards;}
+    .pulsing{animation:pulse 1.8s ease-in-out infinite;}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div id="title">🥕 당근카드</div>
+    <div id="prog-wrap"><div id="prog-fill"></div></div>
+    <div id="count-lbl">0 / 24</div>
+    <div id="dbg-btn" onclick="toggleDebug()">🐛</div>
+  </div>
+  <div id="main">
+    <div class="side">
+      <div class="side-lbl">DECK</div>
+      <div class="card-slot" id="deck-slot" onclick="draw()"></div>
+      <div class="side-hint" id="deck-hint">탭하여 뽑기</div>
+    </div>
+    <div id="arrow">▶</div>
+    <div class="side">
+      <div class="side-lbl">DRAWN</div>
+      <div class="card-slot" id="drawn-slot"></div>
+      <div id="drawn-lbl"></div>
+    </div>
+  </div>
+</div>
+
+<div id="dbg-panel">
+  <h3>◈ DEBUG MODE ◈</h3>
+  <div class="dbg-grid" id="dbg-stats"></div>
+  <div class="dbg-chips" id="dbg-chips"></div>
+  <button class="dbg-close" onclick="toggleDebug()">▲ 닫기</button>
+</div>
+
+<script>
+const INFO = {
+  carrot:{ label:'당근!', emoji:'🥕', color:'#BF360C', border:'#FF6D00' },
+  '1':   { label:'1칸',  emoji:'🐇', color:'#1B5E20', border:'#43A047', dots:1 },
+  '2':   { label:'2칸',  emoji:'🐇', color:'#0D47A1', border:'#1E88E5', dots:2 },
+  '3':   { label:'3칸',  emoji:'🐇', color:'#4A148C', border:'#8E24AA', dots:3 },
+};
+const TOTALS = { carrot:6, '1':12, '2':4, '3':2 };
+const TEMPLATE = [
+  ...Array(6).fill('carrot'),
+  ...Array(12).fill('1'),
+  ...Array(4).fill('2'),
+  ...Array(2).fill('3'),
+];
+
+let deck=[], drawn=null, counts={}, chips=[], phase='idle', debugOpen=false;
+let CW=130, CH=190;
+
+function shuffle(a){
+  a=[...a];
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+function makeDeck(){
+  const ts=Date.now();
+  return shuffle(TEMPLATE.map((t,i)=>({type:t,uid:`${t}${ts}${i}`})));
+}
+
+function calcCardSize(){
+  const main=document.getElementById('main');
+  const r=main.getBoundingClientRect();
+  const avH=r.height-44;
+  CH=Math.min(Math.max(avH,120),300);
+  CW=Math.round(CH*0.62);
+  ['deck-slot','drawn-slot'].forEach(id=>{
+    const el=document.getElementById(id);
+    el.style.width=CW+'px';
+    el.style.height=CH+'px';
+  });
+  // update ghost layer sizes
+  document.querySelectorAll('.sl3,.sl2').forEach(el=>{
+    el.style.width=CW+'px'; el.style.height=CH+'px';
+  });
+}
+
+function renderDeck(){
+  const slot=document.getElementById('deck-slot');
+  const hint=document.getElementById('deck-hint');
+  const empty=deck.length===0;
+  let html='';
+
+  if(!empty){
+    if(deck.length>2) html+=`<div class="sl3" style="width:${CW}px;height:${CH}px"></div>`;
+    if(deck.length>1) html+=`<div class="sl2" style="width:${CW}px;height:${CH}px"></div>`;
+  }
+
+  if(phase==='shuffling'){
+    const bgs=['linear-gradient(135deg,#43A047,#1B5E20)','linear-gradient(135deg,#2E7D32,#388E3C)','linear-gradient(135deg,#388E3C,#1B5E20)'];
+    ['sc1','sc2','sc3'].forEach((c,i)=>{
+      html+=`<div class="${c}" style="position:absolute;inset:0;border-radius:13px;background:${bgs[i]};border:2.5px solid #1a5e20"></div>`;
+    });
+    slot.classList.add('shuffling');
+  } else {
+    slot.classList.remove('shuffling');
+  }
+
+  if(empty){
+    hint.textContent='탭하여 셔플';
+    slot.classList.add('pulsing');
+    const txt=phase==='shuffling'?'셔플 중...':'탭하여 셔플!';
+    html+=`<div class="c-empty"><div class="c-empty-ico">🔀</div><div class="c-empty-txt">${txt}</div></div>`;
+  } else {
+    hint.textContent='탭하여 뽑기';
+    slot.classList.remove('pulsing');
+    html+=`<div class="c-back"><div class="c-back-ring"></div><div class="c-back-ico">🃏</div><div class="c-back-txt">CARROT</div></div>`;
+    html+=`<div class="deck-badge">${deck.length}</div>`;
+  }
+  slot.innerHTML=html;
+}
+
+function renderDrawn(){
+  const slot=document.getElementById('drawn-slot');
+  const lbl=document.getElementById('drawn-lbl');
+  if(!drawn){
+    slot.innerHTML=`<div class="c-ph"><div class="c-ph-txt">여기에 표시</div></div>`;
+    lbl.textContent=''; lbl.style.animation='';
+    return;
+  }
+  const info=INFO[drawn.type];
+  const isC=drawn.type==='carrot';
+  const es=Math.round(CH*0.28);
+  const bg=isC?'white':'linear-gradient(to bottom,#87CEEB 0%,#87CEEB 62%,#4CAF50 62%,#3d9444 100%)';
+
+  let clouds='';
+  if(!isC){
+    const cw1=Math.round(CW*.28), cw2=Math.round(CW*.19), cw3=Math.round(CW*.22);
+    clouds=`
+      <div class="cloud" style="top:9px;left:9px;width:${cw1}px;height:14px"></div>
+      <div class="cloud" style="top:6px;left:${Math.round(CW*.18)}px;width:${cw2}px;height:12px"></div>
+      <div class="cloud" style="top:11px;right:10px;width:${cw3}px;height:13px"></div>`;
+  }
+
+  let inner='';
+  if(isC){
+    inner=`<div class="c-emoji" style="font-size:${es}px;transform:rotate(-8deg)">${info.emoji}</div>
+           <div class="c-click">CLICK!</div>`;
+  } else {
+    const ds=Array(info.dots).fill('<div class="dot"></div>').join('');
+    inner=`<div class="c-emoji" style="font-size:${es}px">${info.emoji}</div>
+           <div class="c-dots">${ds}</div>`;
+  }
+
+  slot.innerHTML=`<div class="c-face" style="background:${bg};border-color:${info.border}">
+    ${clouds}
+    <div class="c-badge" style="background:${info.border}">${info.label}</div>
+    ${inner}
+  </div>`;
+
+  lbl.textContent=info.label;
+  lbl.style.color=info.color;
+  lbl.style.animation='none';
+  requestAnimationFrame(()=>{ lbl.style.animation='lPop .35s cubic-bezier(.34,1.56,.64,1)'; });
+}
+
+function updateBar(){
+  const n=Object.values(counts).reduce((s,v)=>s+v,0);
+  document.getElementById('prog-fill').style.width=`${(n/24)*100}%`;
+  document.getElementById('count-lbl').textContent=`${n} / 24`;
+}
+
+function renderDebug(){
+  const statsEl=document.getElementById('dbg-stats');
+  const chipsEl=document.getElementById('dbg-chips');
+  statsEl.innerHTML=Object.entries(INFO).map(([type,info])=>{
+    const cnt=counts[type]||0, tot=TOTALS[type], pct=(cnt/tot)*100;
+    return `<div class="dbg-card" style="background:${info.border}12;border-color:${info.border}33">
+      <div class="dbg-row">
+        <span class="dbg-lbl" style="color:${info.color}">${info.emoji} ${info.label}</span>
+        <span class="dbg-cnt" style="color:${info.color}">${cnt}<span style="font-size:9px;color:rgba(255,255,255,.22);font-weight:700">/${tot}</span></span>
+      </div>
+      <div class="dbg-bar"><div class="dbg-bar-fill" style="width:${pct}%;background:${info.border}"></div></div>
+    </div>`;
+  }).join('');
+  chipsEl.innerHTML=chips.map((card,i)=>{
+    const info=INFO[card.type];
+    return `<div class="dbg-chip" style="background:${info.border}1A;border-color:${info.border};color:${info.color};opacity:${Math.max(.28,1-i*.1)}">${info.emoji} ${info.label}</div>`;
+  }).join('');
+}
+
+function draw(){
+  if(phase!=='idle') return;
+  if(deck.length===0){
+    phase='shuffling';
+    renderDeck();
+    setTimeout(()=>{
+      deck=makeDeck(); drawn=null; counts={}; chips=[];
+      renderDrawn(); updateBar();
+      setTimeout(()=>{ phase='idle'; renderDeck(); if(debugOpen) renderDebug(); }, 500);
+    }, 1300);
+    return;
+  }
+  phase='flipping';
+  const card=deck.pop();
+  drawn=card;
+  counts[card.type]=(counts[card.type]||0)+1;
+  chips=[card,...chips].slice(0,10);
+  renderDeck(); renderDrawn(); updateBar();
+  if(debugOpen) renderDebug();
+  setTimeout(()=>{ phase='idle'; },480);
+}
+
+function toggleDebug(){
+  debugOpen=!debugOpen;
+  document.getElementById('dbg-panel').classList.toggle('open',debugOpen);
+  document.getElementById('dbg-btn').classList.toggle('on',debugOpen);
+  if(debugOpen) renderDebug();
+}
+
+function init(){
+  deck=makeDeck(); drawn=null; counts={}; chips={}=[]; phase='idle';
+  calcCardSize(); renderDeck(); renderDrawn(); updateBar();
+}
+
+window.addEventListener('resize',()=>{ calcCardSize(); renderDeck(); renderDrawn(); });
+window.addEventListener('orientationchange',()=>{ setTimeout(()=>{ calcCardSize(); renderDeck(); renderDrawn(); },200); });
+
+// SW registration
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
+}
+
+init();
+</script>
+</body>
+</html>
