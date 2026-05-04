@@ -134,7 +134,7 @@
       transform:translateZ(0);
     }
     .c-back-ring{position:absolute;inset:8px;border:1.5px solid rgba(76,175,80,.35);border-radius:8px;}
-    .c-back-ico{font-size:32px;z-index:1;filter:drop-shadow(1px 2px 2px rgba(46,125,50,.25));}
+    .c-back-ico{font-size:32px;z-index:1;}
     .c-back-row{display:flex;align-items:center;gap:5px;z-index:1;margin-top:4px;}
     .c-back-mini{font-size:11px;}
     .c-back-txt{font-size:7px;color:rgba(46,125,50,.7);letter-spacing:2px;z-index:1;font-weight:800;}
@@ -156,21 +156,27 @@
     }
     .c-ph-txt{font-size:10px;color:rgba(255,255,255,.15);font-weight:700;}
 
-    /* Card face. Animation is class-driven so force-rotate can override cleanly. */
+    /* Card face. Animation is class-driven so force-rotate can override cleanly.
+       Parent holds the perspective so keyframes only animate transform/scale —
+       lets Android Chrome run cardTravel/flipIn as a compositor-only animation. */
     .c-face{
       position:absolute;inset:0;border-radius:13px;border:2.5px solid;
       display:flex;flex-direction:column;align-items:center;justify-content:center;
       overflow:hidden;animation:flipIn .46s cubic-bezier(.22,1,.36,1);
       backface-visibility:hidden;-webkit-backface-visibility:hidden;
       transform:translateZ(0);
+      perspective:600px;-webkit-perspective:600px;
     }
-    .c-face.travel{animation:cardTravel .52s cubic-bezier(.22,1,.36,1) both;}
+    .c-face.travel{animation:cardTravel .52s cubic-bezier(.22,1,.36,1) both;will-change:transform;}
     .c-badge{
       position:absolute;top:6px;left:6px;
       font-size:8px;font-weight:900;
       padding:2px 6px;border-radius:4px;color:white;
     }
-    .c-emoji{z-index:1;filter:drop-shadow(1px 2px 3px rgba(0,0,0,.15));}
+    /* drop-shadow filter was forcing per-frame paint of the moving emoji during
+       cardTravel on Android Chrome — drop it. The card border + gradient already
+       give the emoji enough visual contrast. */
+    .c-emoji{z-index:1;}
     .c-dots{display:flex;gap:4px;margin-top:7px;z-index:1;}
     .dot{width:14px;height:10px;border-radius:50%;background:linear-gradient(135deg,#FFE57F,#FFD600);border:1.5px solid #F9A825;}
     .c-click{
@@ -213,6 +219,10 @@
     }
     #dbg-panel.open{bottom:0;}
     #dbg-panel h3{font-size:8px;color:rgba(255,255,255,.18);text-align:center;letter-spacing:3px;margin-bottom:10px;}
+    #dbg-perf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;font-weight:700;color:rgba(255,255,255,.55);text-align:center;margin-bottom:8px;letter-spacing:.5px;}
+    #dbg-perf .ok{color:#81C784;}
+    #dbg-perf .warn{color:#FFB74D;}
+    #dbg-perf .bad{color:#EF5350;}
     .dbg-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;}
     .dbg-card{border-radius:8px;padding:6px 9px;border:1px solid;}
     .dbg-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
@@ -229,10 +239,12 @@
     }
 
     /* ── Animations ── */
+    /* perspective lives on the parent .c-face — keyframes only touch transform/scale
+       so the compositor can keep this off the main thread. */
     @keyframes flipIn{
-      0%{transform:perspective(500px) rotateY(90deg) scale(.88);opacity:0;}
-      55%{transform:perspective(500px) rotateY(-4deg) scale(1.02);opacity:1;}
-      100%{transform:perspective(500px) rotateY(0) scale(1);opacity:1;}
+      0%{transform:rotateY(90deg) scale(.88);opacity:0;}
+      55%{transform:rotateY(-4deg) scale(1.02);opacity:1;}
+      100%{transform:rotateY(0) scale(1);opacity:1;}
     }
     /* 2D-only fallback used inside force-rotate parent (cheaper to composite through rotation) */
     @keyframes flipInLite{
@@ -242,10 +254,10 @@
     }
     /* Card travels from deck → drawn slot, with rotation + arc + overshoot */
     @keyframes cardTravel{
-      0%  {transform:translate3d(var(--tx),-8px,0) perspective(600px) rotateY(75deg) scale(.9);opacity:0;}
-      35% {transform:translate3d(calc(var(--tx) * .55),-14px,0) perspective(600px) rotateY(28deg) scale(.97);opacity:1;}
-      70% {transform:translate3d(calc(var(--tx) * .15),-4px,0) perspective(600px) rotateY(-6deg) scale(1.03);opacity:1;}
-      100%{transform:translate3d(0,0,0) perspective(600px) rotateY(0) scale(1);opacity:1;}
+      0%  {transform:translate3d(var(--tx),-8px,0) rotateY(75deg) scale(.9);opacity:0;}
+      35% {transform:translate3d(calc(var(--tx) * .55),-14px,0) rotateY(28deg) scale(.97);opacity:1;}
+      70% {transform:translate3d(calc(var(--tx) * .15),-4px,0) rotateY(-6deg) scale(1.03);opacity:1;}
+      100%{transform:translate3d(0,0,0) rotateY(0) scale(1);opacity:1;}
     }
     @keyframes deckLift{
       0%  {transform:translate3d(0,0,0);}
@@ -330,6 +342,7 @@
 
 <div id="dbg-panel">
   <h3>◈ DEBUG MODE ◈</h3>
+  <div id="dbg-perf">FPS — · worst — · long task —</div>
   <div class="dbg-grid" id="dbg-stats"></div>
   <div class="dbg-chips" id="dbg-chips"></div>
   <button class="dbg-close" onclick="toggleDebug()">▲ 닫기</button>
@@ -340,7 +353,7 @@
   <div id="start-title">당근 카드뽑기</div>
   <div id="start-tap">탭하여 시작</div>
   <div id="start-hint">전체화면 · 가로모드</div>
-  <div id="start-version">v2026.05.04.2</div>
+  <div id="start-version">v2026.05.04.3</div>
 </div>
 
 <script>
@@ -360,6 +373,9 @@ const TEMPLATE = [
 
 let deck=[], drawn=null, counts={}, chips=[], phase='idle', debugOpen=false;
 let CW=130, CH=190;
+// Cached deck → drawn translate offset, refreshed only on layout changes
+// (calcCardSize). Avoids a forced sync layout on every draw.
+let TRAVEL_TX=0;
 let audioCtx=null;
 
 function initAudio(){
@@ -465,15 +481,23 @@ function calcCardSize(){
   const avH=r.height-44;
   CH=Math.min(Math.max(avH,120),300);
   CW=Math.round(CH*0.62);
-  ['deck-slot','drawn-slot'].forEach(id=>{
-    const el=document.getElementById(id);
-    el.style.width=CW+'px';
-    el.style.height=CH+'px';
-  });
+  const deckEl=document.getElementById('deck-slot');
+  const drawnEl=document.getElementById('drawn-slot');
+  [deckEl,drawnEl].forEach(el=>{ el.style.width=CW+'px'; el.style.height=CH+'px'; });
   // update ghost layer sizes
   document.querySelectorAll('.sl3,.sl2').forEach(el=>{
     el.style.width=CW+'px'; el.style.height=CH+'px';
   });
+  // Slot positions are stable until the next layout pass — cache the deck→drawn
+  // delta now so renderDrawn() doesn't have to call getBoundingClientRect on every
+  // draw (each call was forcing a synchronous layout flush mid-paint).
+  if(!document.body.classList.contains('force-rotate')){
+    const dr=deckEl.getBoundingClientRect();
+    const dw=drawnEl.getBoundingClientRect();
+    TRAVEL_TX=Math.round(dr.left - dw.left);
+  } else {
+    TRAVEL_TX=0;
+  }
 }
 
 function renderDeck(opts){
@@ -617,19 +641,15 @@ function renderDrawn(opts){
   }
 
   // Card travels from deck slot → drawn slot in landscape. In force-rotate (iOS portrait
-   // fallback), skip the geometry read AND the cardTravel animation: getBoundingClientRect
-   // returns post-rotation coords so the --tx delta would be wrong, and the
-   // perspective+rotateY composite through the rotated parent is the main cause of jank.
+  // fallback), skip the cardTravel animation entirely — perspective+rotateY composited
+  // through the rotated parent is the main cause of jank there.
+  // Note: TRAVEL_TX is cached in calcCardSize() so we no longer trigger a synchronous
+  // layout flush on every draw.
   let txStyle = '';
   let cls = 'c-face';
   const inForceRotate = document.body.classList.contains('force-rotate');
   if(opts.travel && !inForceRotate){
-    const deckEl=document.getElementById('deck-slot');
-    const drawnEl=document.getElementById('drawn-slot');
-    const dr=deckEl.getBoundingClientRect();
-    const dw=drawnEl.getBoundingClientRect();
-    const tx = Math.round(dr.left - dw.left); // negative = deck is to the left
-    txStyle = `--tx:${tx}px;`;
+    txStyle = `--tx:${TRAVEL_TX}px;`;
     cls = 'c-face travel';
   }
 
@@ -638,6 +658,15 @@ function renderDrawn(opts){
     <div class="c-badge" style="background:${info.border}">${info.label}</div>
     ${inner}
   </div>`;
+
+  // Release the GPU layer for .c-face.travel as soon as the animation finishes —
+  // will-change: transform is only useful while the transform is animating.
+  if(opts.travel && !inForceRotate){
+    const faceEl=slot.firstElementChild;
+    if(faceEl){
+      faceEl.addEventListener('animationend',()=>{ faceEl.style.willChange='auto'; },{once:true});
+    }
+  }
 
   lbl.textContent=info.label;
   lbl.style.color=info.color;
@@ -697,7 +726,7 @@ function draw(){
   const card=deck.pop();
   drawn=card;
   counts[card.type]=(counts[card.type]||0)+1;
-  chips=[card,...chips].slice(0,10);
+  chips.unshift(card); if(chips.length>10) chips.length=10;
   // Render drawn card BEFORE deck so geometry (deck still on screen) is correct for travel anim.
   renderDrawn({travel:true});
   // Use lightweight count update so the card-back DOM (and its paint) stays put.
@@ -726,11 +755,61 @@ function draw(){
   setTimeout(()=>{ phase='idle'; },420);
 }
 
+// ── Frame / long-task monitor (only runs while the debug panel is open). ──
+// rAF accumulates frame deltas over ~1s windows; PerformanceObserver counts
+// long tasks (>50ms blocks on the main thread). Both are zero-cost when off.
+let perfRafId=0, perfWindowStart=0, perfFrames=0, perfWorst=0, perfLongtaskCount=0, perfLastTs=0;
+let perfObs=null;
+function perfTick(ts){
+  if(!debugOpen) return;
+  if(perfLastTs){
+    const dt=ts-perfLastTs;
+    if(dt>perfWorst) perfWorst=dt;
+    perfFrames++;
+  }
+  perfLastTs=ts;
+  if(!perfWindowStart) perfWindowStart=ts;
+  if(ts-perfWindowStart>=1000){
+    const fps=Math.round(perfFrames*1000/(ts-perfWindowStart));
+    const worst=perfWorst.toFixed(1);
+    const fpsCls = fps>=58 ? 'ok' : fps>=45 ? 'warn' : 'bad';
+    const wCls   = perfWorst<=18 ? 'ok' : perfWorst<=33 ? 'warn' : 'bad';
+    const ltCls  = perfLongtaskCount===0 ? 'ok' : perfLongtaskCount<3 ? 'warn' : 'bad';
+    const el=document.getElementById('dbg-perf');
+    if(el){
+      el.innerHTML =
+        `FPS <span class="${fpsCls}">${fps}</span> · `+
+        `worst <span class="${wCls}">${worst}ms</span> · `+
+        `long task <span class="${ltCls}">${perfLongtaskCount}</span>`;
+    }
+    perfWindowStart=ts; perfFrames=0; perfWorst=0;
+  }
+  perfRafId=requestAnimationFrame(perfTick);
+}
+function startPerfMonitor(){
+  if(perfRafId) return;
+  perfWindowStart=0; perfFrames=0; perfWorst=0; perfLongtaskCount=0; perfLastTs=0;
+  perfRafId=requestAnimationFrame(perfTick);
+  if('PerformanceObserver' in window && !perfObs){
+    try{
+      perfObs=new PerformanceObserver(list=>{ perfLongtaskCount+=list.getEntries().length; });
+      perfObs.observe({type:'longtask',buffered:false});
+    }catch(_){ perfObs=null; }
+  } else if(perfObs){
+    try{ perfObs.observe({type:'longtask',buffered:false}); }catch(_){}
+  }
+}
+function stopPerfMonitor(){
+  if(perfRafId){ cancelAnimationFrame(perfRafId); perfRafId=0; }
+  if(perfObs){ try{ perfObs.disconnect(); }catch(_){} }
+}
+
 function toggleDebug(){
   debugOpen=!debugOpen;
   document.getElementById('dbg-panel').classList.toggle('open',debugOpen);
   document.getElementById('dbg-btn').classList.toggle('on',debugOpen);
-  if(debugOpen) renderDebug();
+  if(debugOpen){ renderDebug(); startPerfMonitor(); }
+  else stopPerfMonitor();
 }
 
 function init(){
