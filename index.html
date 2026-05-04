@@ -64,7 +64,7 @@
     }
     #title{font-size:13px;font-weight:900;color:#66BB6A;white-space:nowrap;}
     #prog-wrap{flex:1;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;}
-    #prog-fill{height:100%;width:0%;background:linear-gradient(90deg,#43A047,#81C784);border-radius:3px;transition:width .3s ease;}
+    #prog-fill{height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:linear-gradient(90deg,#43A047,#81C784);border-radius:3px;transition:transform .32s cubic-bezier(.22,1,.36,1);will-change:transform;}
     #count-lbl{font-size:11px;font-weight:800;color:rgba(255,255,255,0.38);white-space:nowrap;}
     #dbg-btn{font-size:15px;cursor:pointer;opacity:0.25;transition:opacity .2s;padding:0 2px;flex-shrink:0;}
     #dbg-btn.on{opacity:1;}
@@ -79,10 +79,15 @@
     .side-hint{font-size:10px;font-weight:700;color:rgba(255,255,255,0.20);height:13px;}
 
     /* Card slot */
-    .card-slot{position:relative;cursor:pointer;flex-shrink:0;transition:transform 90ms ease-out,box-shadow 200ms ease-out;}
-    #deck-slot:active{transform:scale(.955) translateY(2px);}
-    #deck-slot.lifting{animation:deckLift .42s cubic-bezier(.34,1.56,.64,1);}
-    #deck-slot.deck-low{box-shadow:0 0 0 2px rgba(239,83,80,.0),0 0 18px 2px rgba(239,83,80,.32);animation:lowPulse 1.4s ease-in-out infinite;}
+    .card-slot{position:relative;cursor:pointer;flex-shrink:0;transition:transform 90ms ease-out;contain:layout style;}
+    #deck-slot{transform:translateZ(0);}
+    #deck-slot:active{transform:scale(.955) translate3d(0,2px,0);}
+    #deck-slot.lifting{animation:deckLift .38s cubic-bezier(.4,0,.2,1);will-change:transform;}
+    #deck-slot.deck-low::after{
+      content:"";position:absolute;inset:-2px;border-radius:15px;pointer-events:none;
+      box-shadow:0 0 22px 4px rgba(239,83,80,.45);
+      opacity:.4;animation:lowPulse 1.6s ease-in-out infinite;will-change:opacity;
+    }
     #deck-slot.shuffling{pointer-events:none;}
 
     /* Stack ghost layers */
@@ -111,6 +116,8 @@
       background-size:56px 56px,auto;
       border:2.5px solid #66BB6A;
       display:flex;flex-direction:column;align-items:center;justify-content:center;
+      backface-visibility:hidden;-webkit-backface-visibility:hidden;
+      transform:translateZ(0);
     }
     .c-back-ring{position:absolute;inset:8px;border:1.5px solid rgba(76,175,80,.35);border-radius:8px;}
     .c-back-ico{font-size:32px;z-index:1;filter:drop-shadow(1px 2px 2px rgba(46,125,50,.25));}
@@ -139,7 +146,10 @@
     .c-face{
       position:absolute;inset:0;border-radius:13px;border:2.5px solid;
       display:flex;flex-direction:column;align-items:center;justify-content:center;
-      overflow:hidden;animation:flipIn .46s cubic-bezier(.25,.46,.45,.94);
+      overflow:hidden;animation:flipIn .46s cubic-bezier(.22,1,.36,1);
+      will-change:transform,opacity;
+      backface-visibility:hidden;-webkit-backface-visibility:hidden;
+      transform:translateZ(0);
     }
     .c-badge{
       position:absolute;top:6px;left:6px;
@@ -167,8 +177,8 @@
       box-shadow:0 2px 8px rgba(239,83,80,.5);
       overflow:hidden;
     }
-    .deck-badge .num{display:inline-block;}
-    .deck-badge.changing .num{animation:countSlide .22s cubic-bezier(.34,1.56,.64,1);}
+    .deck-badge .num{display:inline-block;will-change:transform;}
+    .deck-badge.changing .num{animation:countSlide .26s cubic-bezier(.22,1,.36,1);}
     .deck-badge.popping{animation:badgePop .42s cubic-bezier(.34,1.56,.64,1);}
 
     /* Arrow */
@@ -212,15 +222,15 @@
     }
     /* Card travels from deck → drawn slot, with rotation + arc + overshoot */
     @keyframes cardTravel{
-      0%  {transform:translate(var(--tx),-8px) perspective(600px) rotateY(75deg) scale(.9);opacity:0;}
-      35% {transform:translate(calc(var(--tx) * .55),-14px) perspective(600px) rotateY(28deg) scale(.97);opacity:1;}
-      70% {transform:translate(calc(var(--tx) * .15),-4px) perspective(600px) rotateY(-6deg) scale(1.04);opacity:1;}
-      100%{transform:translate(0,0) perspective(600px) rotateY(0) scale(1);opacity:1;}
+      0%  {transform:translate3d(var(--tx),-8px,0) perspective(600px) rotateY(75deg) scale(.9);opacity:0;}
+      35% {transform:translate3d(calc(var(--tx) * .55),-14px,0) perspective(600px) rotateY(28deg) scale(.97);opacity:1;}
+      70% {transform:translate3d(calc(var(--tx) * .15),-4px,0) perspective(600px) rotateY(-6deg) scale(1.03);opacity:1;}
+      100%{transform:translate3d(0,0,0) perspective(600px) rotateY(0) scale(1);opacity:1;}
     }
     @keyframes deckLift{
-      0%  {transform:translateY(0);}
-      40% {transform:translateY(-6px);}
-      100%{transform:translateY(0);}
+      0%  {transform:translate3d(0,0,0);}
+      40% {transform:translate3d(0,-6px,0);}
+      100%{transform:translate3d(0,0,0);}
     }
     @keyframes lPop{
       0%{transform:scale(.4);opacity:0;}
@@ -229,13 +239,13 @@
     }
     @keyframes pulse{0%,100%{opacity:.65;}50%{opacity:1;}}
     @keyframes lowPulse{
-      0%,100%{box-shadow:0 0 0 2px rgba(239,83,80,0),0 0 14px 1px rgba(239,83,80,.22);}
-      50%   {box-shadow:0 0 0 2px rgba(239,83,80,0),0 0 22px 4px rgba(239,83,80,.45);}
+      0%,100%{opacity:.32;}
+      50%   {opacity:.7;}
     }
     @keyframes countSlide{
-      0%  {transform:translateY(-110%);opacity:0;}
-      60% {transform:translateY(8%);opacity:1;}
-      100%{transform:translateY(0);opacity:1;}
+      0%  {transform:translate3d(0,-110%,0);opacity:0;}
+      60% {transform:translate3d(0,4%,0);opacity:1;}
+      100%{transform:translate3d(0,0,0);opacity:1;}
     }
     @keyframes badgePop{
       0%  {transform:scale(.2);opacity:0;}
@@ -269,7 +279,7 @@
     @media (prefers-reduced-motion:reduce){
       .c-face{animation-duration:.01ms!important;}
       .shuffling .rf{animation-duration:.01ms!important;}
-      #deck-slot.deck-low{animation:none!important;}
+      #deck-slot.deck-low::after{animation:none!important;}
       .pulsing,#start-ico,#start-tap{animation:none!important;}
     }
   </style>
@@ -453,8 +463,10 @@ function renderDeck(opts){
   let html='';
 
   if(!empty){
-    if(deck.length>2) html+=`<div class="sl3" style="width:${CW}px;height:${CH}px"></div>`;
-    if(deck.length>1) html+=`<div class="sl2" style="width:${CW}px;height:${CH}px"></div>`;
+    const sl3Vis = deck.length>2 ? '' : 'visibility:hidden;';
+    const sl2Vis = deck.length>1 ? '' : 'visibility:hidden;';
+    html+=`<div class="sl3" style="width:${CW}px;height:${CH}px;${sl3Vis}"></div>`;
+    html+=`<div class="sl2" style="width:${CW}px;height:${CH}px;${sl2Vis}"></div>`;
   }
 
   if(phase==='shuffling'){
@@ -498,6 +510,31 @@ function renderDeck(opts){
   }
 }
 
+// Lightweight update path: only mutates the badge count and ghost-layer visibility,
+// so the card-back DOM stays put and animations don't get stomped by an innerHTML rebuild.
+function updateDeckCount(opts){
+  opts = opts || {};
+  const slot=document.getElementById('deck-slot');
+  const badge=slot.querySelector('.deck-badge');
+  if(!badge){ renderDeck(opts); return; }
+  const numEl=badge.querySelector('.num');
+
+  badge.classList.remove('changing','popping');
+  // restart animation by forcing a reflow on the .num element only (cheaper than the slot)
+  void numEl.offsetWidth;
+  if(opts.badgePop) badge.classList.add('popping');
+  else if(opts.countChanged) badge.classList.add('changing');
+  numEl.textContent=deck.length;
+
+  const sl3=slot.querySelector('.sl3');
+  const sl2=slot.querySelector('.sl2');
+  if(sl3) sl3.style.visibility = deck.length>2 ? '' : 'hidden';
+  if(sl2) sl2.style.visibility = deck.length>1 ? '' : 'hidden';
+
+  slot.classList.toggle('deck-low', deck.length>0 && deck.length<=5 && phase!=='shuffling');
+  slot.setAttribute('aria-label', `카드 뽑기, 남은 ${deck.length}장`);
+}
+
 function renderDrawn(opts){
   opts = opts || {};
   const slot=document.getElementById('drawn-slot');
@@ -533,7 +570,7 @@ function renderDrawn(opts){
 
   // Card travels from deck slot → drawn slot. Compute the delta (deck is on the left).
   // Falls back to plain flipIn when not triggered by an actual draw (e.g. resize/redraw).
-  let anim = 'flipIn .46s cubic-bezier(.25,.46,.45,.94)';
+  let anim = 'flipIn .46s cubic-bezier(.22,1,.36,1)';
   let txStyle = '';
   if(opts.travel){
     const deckEl=document.getElementById('deck-slot');
@@ -542,7 +579,7 @@ function renderDrawn(opts){
     const dw=drawnEl.getBoundingClientRect();
     const tx = Math.round(dr.left - dw.left); // negative = deck is to the left
     txStyle = `--tx:${tx}px;`;
-    anim = 'cardTravel .48s cubic-bezier(.34,1.56,.64,1)';
+    anim = 'cardTravel .52s cubic-bezier(.22,1,.36,1) both';
   }
 
   slot.innerHTML=`<div class="c-face" style="${txStyle}background:${bg};border-color:${info.border};animation:${anim}">
@@ -554,12 +591,12 @@ function renderDrawn(opts){
   lbl.textContent=info.label;
   lbl.style.color=info.color;
   lbl.style.animation='none';
-  requestAnimationFrame(()=>{ lbl.style.animation='lPop .35s cubic-bezier(.34,1.56,.64,1)'; });
+  requestAnimationFrame(()=>{ lbl.style.animation='lPop .38s cubic-bezier(.22,1,.36,1)'; });
 }
 
 function updateBar(){
   const n=Object.values(counts).reduce((s,v)=>s+v,0);
-  document.getElementById('prog-fill').style.width=`${(n/24)*100}%`;
+  document.getElementById('prog-fill').style.transform=`scaleX(${n/24})`;
   document.getElementById('count-lbl').textContent=`${n} / 24`;
 }
 
@@ -609,7 +646,10 @@ function draw(){
   chips=[card,...chips].slice(0,10);
   // Render drawn card BEFORE deck so geometry (deck still on screen) is correct for travel anim.
   renderDrawn({travel:true});
-  renderDeck({countChanged:true});
+  // Use lightweight count update so the card-back DOM (and its paint) stays put.
+  // Only do a full re-render when we actually need to switch into the empty/shuffle state.
+  if(deck.length===0) renderDeck({countChanged:true});
+  else updateDeckCount({countChanged:true});
   updateBar();
   // Subtle lift on the deck the moment a card is pulled away.
   const deckEl=document.getElementById('deck-slot');
@@ -618,7 +658,7 @@ function draw(){
   void deckEl.offsetWidth;
   deckEl.classList.add('lifting');
   if(debugOpen) renderDebug();
-  setTimeout(()=>{ phase='idle'; deckEl.classList.remove('lifting'); },480);
+  setTimeout(()=>{ phase='idle'; deckEl.classList.remove('lifting'); },420);
 }
 
 function toggleDebug(){
