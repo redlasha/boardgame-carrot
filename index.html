@@ -61,11 +61,9 @@
       }
     }
     /* Under force-rotate (iOS Safari has no orientation.lock), 3D transforms inside the
-       rotated app layer are very expensive — fall back to lighter 2D-only animations. */
-    body.force-rotate .c-face,
-    body.force-rotate .c-face.travel{
-      animation:flipInLite .34s cubic-bezier(.22,1,.36,1) both!important;
-    }
+       rotated app layer are very expensive. The .c-face flip is handled in JS now
+       (renderDrawn picks a 2D scale-fade keyframe set when force-rotate is active),
+       so no CSS override is needed for the face itself. Riffle still uses CSS. */
     body.force-rotate .shuffling .rf{animation-duration:.85s!important;}
     body.force-rotate .shuffling .rfPress{animation:none!important;}
 
@@ -156,18 +154,20 @@
     }
     .c-ph-txt{font-size:10px;color:rgba(255,255,255,.15);font-weight:700;}
 
-    /* Card face. Animation is class-driven so force-rotate can override cleanly.
-       Parent holds the perspective so keyframes only animate transform/scale —
-       lets Android Chrome run cardTravel/flipIn as a compositor-only animation. */
+    /* Card face. The element is built once in buildDrawnSlot() and reused for every
+       draw — only style/textContent mutate, never innerHTML. Animations are driven
+       by the Web Animations API (see renderDrawn) so no class toggle re-fires CSS
+       animations and no fresh GPU layer is created per draw. opacity:0 is the
+       resting state; WAAPI keyframes (fill:both) override during/after a draw.
+       perspective was on .c-face itself before — that only applies to children's
+       3D transforms, not the element's own rotateY, so it cost without effect. */
     .c-face{
       position:absolute;inset:0;border-radius:13px;border:2.5px solid;
       display:flex;flex-direction:column;align-items:center;justify-content:center;
-      overflow:hidden;animation:flipIn .46s cubic-bezier(.22,1,.36,1);
+      overflow:hidden;opacity:0;
       backface-visibility:hidden;-webkit-backface-visibility:hidden;
-      transform:translateZ(0);
-      perspective:600px;-webkit-perspective:600px;
+      transform:translateZ(0);will-change:transform;
     }
-    .c-face.travel{animation:cardTravel .52s cubic-bezier(.22,1,.36,1) both;will-change:transform;}
     .c-badge{
       position:absolute;top:6px;left:6px;
       font-size:8px;font-weight:900;
@@ -239,26 +239,13 @@
     }
 
     /* ── Animations ── */
-    /* perspective lives on the parent .c-face — keyframes only touch transform/scale
-       so the compositor can keep this off the main thread. */
-    @keyframes flipIn{
-      0%{transform:rotateY(90deg) scale(.88);opacity:0;}
-      55%{transform:rotateY(-4deg) scale(1.02);opacity:1;}
-      100%{transform:rotateY(0) scale(1);opacity:1;}
-    }
-    /* 2D-only fallback used inside force-rotate parent (cheaper to composite through rotation) */
-    @keyframes flipInLite{
-      0%  {opacity:0;transform:scale(.86) translateZ(0);}
-      60% {opacity:1;transform:scale(1.04) translateZ(0);}
-      100%{opacity:1;transform:scale(1)  translateZ(0);}
-    }
-    /* Card travels from deck → drawn slot, with rotation + arc + overshoot */
-    @keyframes cardTravel{
-      0%  {transform:translate3d(var(--tx),-8px,0) rotateY(75deg) scale(.9);opacity:0;}
-      35% {transform:translate3d(calc(var(--tx) * .55),-14px,0) rotateY(28deg) scale(.97);opacity:1;}
-      70% {transform:translate3d(calc(var(--tx) * .15),-4px,0) rotateY(-6deg) scale(1.03);opacity:1;}
-      100%{transform:translate3d(0,0,0) rotateY(0) scale(1);opacity:1;}
-    }
+    /* flipIn / flipInLite / cardTravel used to live here as @keyframes that fired on
+       a fresh .c-face element via the `animation:` property. Each draw that rebuilt
+       the drawn-slot DOM re-promoted the new element to its own GPU layer + did a
+       fresh first-paint of emoji + gradient + clouds + badge, which is what made
+       the 33ms hitch survive every other optimization. The face is now persistent
+       and these keyframes are inlined into Web Animations API calls in renderDrawn,
+       so they don't need to exist as CSS animations anymore. */
     @keyframes deckLift{
       0%  {transform:translate3d(0,0,0);}
       40% {transform:translate3d(0,-6px,0);}
@@ -309,7 +296,8 @@
     .pulsing{animation:pulse 1.8s ease-in-out infinite;}
 
     @media (prefers-reduced-motion:reduce){
-      .c-face{animation-duration:.01ms!important;}
+      /* .c-face animation honor is now done in JS (renderDrawn checks the media query
+         and skips the WAAPI call), since the face no longer uses CSS animations. */
       .shuffling .rf{animation-duration:.01ms!important;}
       #deck-slot.deck-low::after{animation:none!important;}
       .pulsing,#start-ico,#start-tap{animation:none!important;}
@@ -353,7 +341,7 @@
   <div id="start-title">당근 카드뽑기</div>
   <div id="start-tap">탭하여 시작</div>
   <div id="start-hint">전체화면 · 가로모드</div>
-  <div id="start-version">v2026.05.04.3</div>
+  <div id="start-version">v2026.05.04.4</div>
 </div>
 
 <script>
@@ -377,6 +365,14 @@ let CW=130, CH=190;
 // (calcCardSize). Avoids a forced sync layout on every draw.
 let TRAVEL_TX=0;
 let audioCtx=null;
+
+// References to the persistent DOM inside the drawn-slot. Built once in
+// buildDrawnSlot(); renderDrawn() never touches innerHTML again, just mutates
+// these nodes' text/style. This is the core of the smoothness fix — the GPU
+// layer for .c-face survives across draws so there's no first-paint penalty
+// for a freshly-inserted element on each tap.
+const dom = {};
+let prefersReducedMotion = false;
 
 function initAudio(){
   if(audioCtx) return;
@@ -607,71 +603,149 @@ function updateDeckCount(opts){
   slot.setAttribute('aria-label', `카드 뽑기, 남은 ${deck.length}장`);
 }
 
+// Build the drawn-slot DOM once and cache element references. Every subsequent
+// renderDrawn() call only mutates text/style on these nodes — no innerHTML, no
+// new DOM, no fresh GPU layer. This removes the per-draw first-paint hitch that
+// the long-task observer couldn't see (the work was happening in style/paint/
+// composite, not in script).
+function buildDrawnSlot(){
+  const slot=document.getElementById('drawn-slot');
+  slot.innerHTML=
+    '<div class="c-ph"><div class="c-ph-txt">여기에 표시</div></div>'+
+    '<div class="c-face">'+
+      '<div class="cloud cloud-1"></div>'+
+      '<div class="cloud cloud-2"></div>'+
+      '<div class="cloud cloud-3"></div>'+
+      '<div class="c-badge"></div>'+
+      '<div class="c-emoji"></div>'+
+      '<div class="c-dots">'+
+        '<div class="dot"></div><div class="dot"></div><div class="dot"></div>'+
+      '</div>'+
+      '<div class="c-click">CLICK!</div>'+
+    '</div>';
+  dom.drawnSlot = slot;
+  dom.drawnPh    = slot.querySelector('.c-ph');
+  dom.drawnFace  = slot.querySelector('.c-face');
+  dom.drawnBadge = slot.querySelector('.c-badge');
+  dom.drawnEmoji = slot.querySelector('.c-emoji');
+  dom.drawnDots  = slot.querySelector('.c-dots');
+  dom.drawnClick = slot.querySelector('.c-click');
+  dom.drawnClouds = [
+    slot.querySelector('.cloud-1'),
+    slot.querySelector('.cloud-2'),
+    slot.querySelector('.cloud-3'),
+  ];
+  dom.drawnDotEls = Array.from(dom.drawnDots.children);
+  dom.drawnLbl = document.getElementById('drawn-lbl');
+}
+
 function renderDrawn(opts){
   opts = opts || {};
-  const slot=document.getElementById('drawn-slot');
-  const lbl=document.getElementById('drawn-lbl');
   if(!drawn){
-    slot.innerHTML=`<div class="c-ph"><div class="c-ph-txt">여기에 표시</div></div>`;
-    lbl.textContent=''; lbl.style.animation='';
+    // No card: show placeholder, hide the persistent face (CSS opacity:0 takes
+    // over once we cancel any in-flight WAAPI fill state).
+    dom.drawnPh.style.display = '';
+    if(dom.drawnFace.animate){
+      dom.drawnFace.getAnimations().forEach(a=>a.cancel());
+    }
+    dom.drawnFace.style.opacity = '';
+    dom.drawnLbl.textContent = '';
     return;
   }
+  dom.drawnPh.style.display = 'none';
+  // Make the face visible. WAAPI keyframes (fill:both) will override during the
+  // animation; this keeps it visible after the animation ends and on plain
+  // re-renders (e.g. resize) where we don't want to re-trigger the flip.
+  dom.drawnFace.style.opacity = '1';
+
   const info=INFO[drawn.type];
   const isC=drawn.type==='carrot';
   const es=Math.round(CH*0.28);
-  const bg=isC?'white':'linear-gradient(to bottom,#87CEEB 0%,#87CEEB 62%,#4CAF50 62%,#3d9444 100%)';
 
-  let clouds='';
-  if(!isC){
-    const cw1=Math.round(CW*.28), cw2=Math.round(CW*.19), cw3=Math.round(CW*.22);
-    clouds=`
-      <div class="cloud" style="top:9px;left:9px;width:${cw1}px;height:14px"></div>
-      <div class="cloud" style="top:6px;left:${Math.round(CW*.18)}px;width:${cw2}px;height:12px"></div>
-      <div class="cloud" style="top:11px;right:10px;width:${cw3}px;height:13px"></div>`;
-  }
+  dom.drawnFace.style.background = isC
+    ? 'white'
+    : 'linear-gradient(to bottom,#87CEEB 0%,#87CEEB 62%,#4CAF50 62%,#3d9444 100%)';
+  dom.drawnFace.style.borderColor = info.border;
 
-  let inner='';
+  dom.drawnBadge.textContent = info.label;
+  dom.drawnBadge.style.background = info.border;
+
+  dom.drawnEmoji.textContent = info.emoji;
+  dom.drawnEmoji.style.fontSize = es+'px';
+  dom.drawnEmoji.style.transform = isC ? 'rotate(-8deg)' : '';
+
+  // Carrot vs rabbit: flip which "below the emoji" element is visible.
+  dom.drawnClick.style.display = isC ? '' : 'none';
+  dom.drawnDots.style.display  = isC ? 'none' : '';
+
   if(isC){
-    inner=`<div class="c-emoji" style="font-size:${es}px;transform:rotate(-8deg)">${info.emoji}</div>
-           <div class="c-click">CLICK!</div>`;
+    dom.drawnClouds[0].style.display='none';
+    dom.drawnClouds[1].style.display='none';
+    dom.drawnClouds[2].style.display='none';
   } else {
-    const ds=Array(info.dots).fill('<div class="dot"></div>').join('');
-    inner=`<div class="c-emoji" style="font-size:${es}px">${info.emoji}</div>
-           <div class="c-dots">${ds}</div>`;
-  }
+    const cw1=Math.round(CW*.28), cw2=Math.round(CW*.19), cw3=Math.round(CW*.22);
+    const cloudStyles = [
+      `display:block;top:9px;left:9px;width:${cw1}px;height:14px;`,
+      `display:block;top:6px;left:${Math.round(CW*.18)}px;width:${cw2}px;height:12px;`,
+      `display:block;top:11px;right:10px;width:${cw3}px;height:13px;`,
+    ];
+    dom.drawnClouds[0].style.cssText = cloudStyles[0];
+    dom.drawnClouds[1].style.cssText = cloudStyles[1];
+    dom.drawnClouds[2].style.cssText = cloudStyles[2];
 
-  // Card travels from deck slot → drawn slot in landscape. In force-rotate (iOS portrait
-  // fallback), skip the cardTravel animation entirely — perspective+rotateY composited
-  // through the rotated parent is the main cause of jank there.
-  // Note: TRAVEL_TX is cached in calcCardSize() so we no longer trigger a synchronous
-  // layout flush on every draw.
-  let txStyle = '';
-  let cls = 'c-face';
-  const inForceRotate = document.body.classList.contains('force-rotate');
-  if(opts.travel && !inForceRotate){
-    txStyle = `--tx:${TRAVEL_TX}px;`;
-    cls = 'c-face travel';
-  }
-
-  slot.innerHTML=`<div class="${cls}" style="${txStyle}background:${bg};border-color:${info.border}">
-    ${clouds}
-    <div class="c-badge" style="background:${info.border}">${info.label}</div>
-    ${inner}
-  </div>`;
-
-  // Release the GPU layer for .c-face.travel as soon as the animation finishes —
-  // will-change: transform is only useful while the transform is animating.
-  if(opts.travel && !inForceRotate){
-    const faceEl=slot.firstElementChild;
-    if(faceEl){
-      faceEl.addEventListener('animationend',()=>{ faceEl.style.willChange='auto'; },{once:true});
+    const dots = info.dots || 0;
+    for(let i=0;i<3;i++){
+      dom.drawnDotEls[i].style.display = i<dots ? '' : 'none';
     }
   }
 
-  lbl.textContent=info.label;
-  lbl.style.color=info.color;
-  lbl.style.animation='none';
-  requestAnimationFrame(()=>{ lbl.style.animation='lPop .38s cubic-bezier(.22,1,.36,1)'; });
+  // Animate via Web Animations API. The face element is persistent, so the
+  // compositor reuses its existing GPU layer — no fresh-layer first-paint cost.
+  // We only animate when the caller explicitly asked (opts.travel from draw()).
+  // Resize / orientation re-renders skip the animation entirely.
+  if(opts.travel && dom.drawnFace.animate && !prefersReducedMotion){
+    dom.drawnFace.getAnimations().forEach(a=>a.cancel());
+    const inForceRotate = document.body.classList.contains('force-rotate');
+    const tx = TRAVEL_TX;
+    if(inForceRotate || tx === 0){
+      // Lite 2D-only flip — used for force-rotate (iOS portrait fallback) where
+      // 3D transforms inside the rotated parent are very expensive.
+      dom.drawnFace.animate(
+        [
+          {opacity:0, transform:'translateZ(0) scale(.86)'},
+          {opacity:1, transform:'translateZ(0) scale(1.04)', offset:.6},
+          {opacity:1, transform:'translateZ(0) scale(1)'},
+        ],
+        {duration:340, easing:'cubic-bezier(.22,1,.36,1)', fill:'both'}
+      );
+    } else {
+      // Full landscape: card travels from deck slot → drawn slot with a slight
+      // rotateY arc + overshoot.
+      dom.drawnFace.animate(
+        [
+          {opacity:0, transform:`translate3d(${tx}px,-8px,0) rotateY(75deg) scale(.9)`},
+          {opacity:1, transform:`translate3d(${tx*0.55}px,-14px,0) rotateY(28deg) scale(.97)`, offset:.35},
+          {opacity:1, transform:`translate3d(${tx*0.15}px,-4px,0) rotateY(-6deg) scale(1.03)`, offset:.7},
+          {opacity:1, transform:'translate3d(0,0,0) rotateY(0) scale(1)'},
+        ],
+        {duration:520, easing:'cubic-bezier(.22,1,.36,1)', fill:'both'}
+      );
+    }
+  }
+
+  dom.drawnLbl.textContent = info.label;
+  dom.drawnLbl.style.color = info.color;
+  if(dom.drawnLbl.animate && !prefersReducedMotion){
+    dom.drawnLbl.getAnimations().forEach(a=>a.cancel());
+    dom.drawnLbl.animate(
+      [
+        {transform:'scale(.4)', opacity:0},
+        {transform:'scale(1.12)', opacity:1, offset:.65},
+        {transform:'scale(1)', opacity:1},
+      ],
+      {duration:380, easing:'cubic-bezier(.22,1,.36,1)', fill:'both'}
+    );
+  }
 }
 
 function updateBar(){
@@ -813,6 +887,16 @@ function toggleDebug(){
 }
 
 function init(){
+  // Detect reduced-motion once. Listen for changes so toggling OS setting takes
+  // effect without a reload.
+  if(window.matchMedia){
+    const mq=window.matchMedia('(prefers-reduced-motion: reduce)');
+    prefersReducedMotion=mq.matches;
+    const onChange=e=>{ prefersReducedMotion=e.matches; };
+    if(mq.addEventListener) mq.addEventListener('change',onChange);
+    else if(mq.addListener) mq.addListener(onChange);
+  }
+  buildDrawnSlot();
   deck=makeDeck(); drawn=null; counts={}; chips=[]; phase='idle';
   calcCardSize(); renderDeck(); renderDrawn(); updateBar();
 }
