@@ -75,16 +75,32 @@
       gap:clamp(12px,3vw,28px);padding:6px 14px;
     }
     .side{display:flex;flex-direction:column;align-items:center;gap:5px;}
-    .side-lbl{font-size:9px;font-weight:800;color:rgba(255,255,255,0.22);letter-spacing:2px;}
-    .side-hint{font-size:9px;font-weight:700;color:rgba(255,255,255,0.18);height:12px;}
+    .side-lbl{font-size:10px;font-weight:800;color:rgba(255,255,255,0.22);letter-spacing:2px;}
+    .side-hint{font-size:10px;font-weight:700;color:rgba(255,255,255,0.20);height:13px;}
 
     /* Card slot */
-    .card-slot{position:relative;cursor:pointer;flex-shrink:0;}
+    .card-slot{position:relative;cursor:pointer;flex-shrink:0;transition:transform 90ms ease-out,box-shadow 200ms ease-out;}
+    #deck-slot:active{transform:scale(.955) translateY(2px);}
+    #deck-slot.lifting{animation:deckLift .42s cubic-bezier(.34,1.56,.64,1);}
+    #deck-slot.deck-low{box-shadow:0 0 0 2px rgba(239,83,80,.0),0 0 18px 2px rgba(239,83,80,.32);animation:lowPulse 1.4s ease-in-out infinite;}
+    #deck-slot.shuffling{pointer-events:none;}
 
     /* Stack ghost layers */
     .sl3,.sl2{position:absolute;border-radius:13px;pointer-events:none;}
     .sl3{top:-6px;left:3px;background:rgba(165,214,167,.55);}
     .sl2{top:-3px;left:1.5px;background:rgba(200,230,201,.7);}
+
+    /* Riffle layers (used during shuffle) */
+    .rf{position:absolute;inset:0;border-radius:13px;border:2.5px solid #66BB6A;
+        background:linear-gradient(135deg,#C8E6C9,#81C784);will-change:transform,opacity;}
+    .shuffling .rf{animation-duration:1.1s;animation-timing-function:cubic-bezier(.4,0,.2,1);animation-fill-mode:forwards;}
+    .shuffling .rfL1{animation-name:riffleL;animation-delay:0ms;}
+    .shuffling .rfL2{animation-name:riffleL;animation-delay:80ms;}
+    .shuffling .rfL3{animation-name:riffleL;animation-delay:160ms;}
+    .shuffling .rfR1{animation-name:riffleR;animation-delay:40ms;}
+    .shuffling .rfR2{animation-name:riffleR;animation-delay:120ms;}
+    .shuffling .rfR3{animation-name:riffleR;animation-delay:200ms;}
+    .shuffling .rfPress{animation:rifflePress 1.4s cubic-bezier(.4,0,.2,1) forwards;}
 
     /* Card back */
     .c-back{
@@ -146,10 +162,14 @@
       background:#ef5350;color:white;
       width:24px;height:24px;border-radius:50%;
       display:flex;align-items:center;justify-content:center;
-      font-size:10px;font-weight:900;
+      font-size:11px;font-weight:900;
       border:2px solid #0f2010;
       box-shadow:0 2px 8px rgba(239,83,80,.5);
+      overflow:hidden;
     }
+    .deck-badge .num{display:inline-block;}
+    .deck-badge.changing .num{animation:countSlide .22s cubic-bezier(.34,1.56,.64,1);}
+    .deck-badge.popping{animation:badgePop .42s cubic-bezier(.34,1.56,.64,1);}
 
     /* Arrow */
     #arrow{font-size:18px;color:rgba(255,255,255,.18);flex-shrink:0;}
@@ -190,31 +210,68 @@
       55%{transform:perspective(500px) rotateY(-4deg) scale(1.02);opacity:1;}
       100%{transform:perspective(500px) rotateY(0) scale(1);opacity:1;}
     }
+    /* Card travels from deck → drawn slot, with rotation + arc + overshoot */
+    @keyframes cardTravel{
+      0%  {transform:translate(var(--tx),-8px) perspective(600px) rotateY(75deg) scale(.9);opacity:0;}
+      35% {transform:translate(calc(var(--tx) * .55),-14px) perspective(600px) rotateY(28deg) scale(.97);opacity:1;}
+      70% {transform:translate(calc(var(--tx) * .15),-4px) perspective(600px) rotateY(-6deg) scale(1.04);opacity:1;}
+      100%{transform:translate(0,0) perspective(600px) rotateY(0) scale(1);opacity:1;}
+    }
+    @keyframes deckLift{
+      0%  {transform:translateY(0);}
+      40% {transform:translateY(-6px);}
+      100%{transform:translateY(0);}
+    }
     @keyframes lPop{
       0%{transform:scale(.4);opacity:0;}
       65%{transform:scale(1.12);opacity:1;}
       100%{transform:scale(1);opacity:1;}
     }
     @keyframes pulse{0%,100%{opacity:.65;}50%{opacity:1;}}
-    @keyframes sc1{
-      0%,100%{transform:translate(0,0) rotate(0deg);}
-      42%{transform:translate(-48px,-60px) rotate(-22deg);}
-      72%{transform:translate(36px,-42px) rotate(11deg);}
+    @keyframes lowPulse{
+      0%,100%{box-shadow:0 0 0 2px rgba(239,83,80,0),0 0 14px 1px rgba(239,83,80,.22);}
+      50%   {box-shadow:0 0 0 2px rgba(239,83,80,0),0 0 22px 4px rgba(239,83,80,.45);}
     }
-    @keyframes sc2{
-      0%,100%{transform:translate(0,0) rotate(0deg);}
-      42%{transform:translate(56px,-68px) rotate(18deg);}
-      72%{transform:translate(-32px,-52px) rotate(-14deg);}
+    @keyframes countSlide{
+      0%  {transform:translateY(-110%);opacity:0;}
+      60% {transform:translateY(8%);opacity:1;}
+      100%{transform:translateY(0);opacity:1;}
     }
-    @keyframes sc3{
-      0%,100%{transform:translate(0,0) rotate(0deg);}
-      42%{transform:translate(-58px,52px) rotate(24deg);}
-      72%{transform:translate(46px,58px) rotate(-19deg);}
+    @keyframes badgePop{
+      0%  {transform:scale(.2);opacity:0;}
+      55% {transform:scale(1.25);opacity:1;}
+      100%{transform:scale(1);opacity:1;}
     }
-    .shuffling .sc1{animation:sc1 1.3s cubic-bezier(.4,0,.2,1) forwards;}
-    .shuffling .sc2{animation:sc2 1.3s cubic-bezier(.4,0,.2,1) forwards;}
-    .shuffling .sc3{animation:sc3 1.3s cubic-bezier(.4,0,.2,1) forwards;}
+    /* Riffle shuffle: left/right halves split, weave back together */
+    @keyframes riffleL{
+      0%  {transform:translate(0,0) rotate(0);opacity:.95;}
+      30% {transform:translate(-58px,-6px) rotate(-14deg);opacity:1;}
+      55% {transform:translate(-44px,-2px) rotate(-9deg);opacity:1;}
+      78% {transform:translate(-8px,0) rotate(-2deg);opacity:1;}
+      100%{transform:translate(0,0) rotate(0);opacity:.85;}
+    }
+    @keyframes riffleR{
+      0%  {transform:translate(0,0) rotate(0);opacity:.95;}
+      30% {transform:translate(58px,-6px) rotate(14deg);opacity:1;}
+      55% {transform:translate(44px,-2px) rotate(9deg);opacity:1;}
+      78% {transform:translate(8px,0) rotate(2deg);opacity:1;}
+      100%{transform:translate(0,0) rotate(0);opacity:.85;}
+    }
+    @keyframes rifflePress{
+      0%  {transform:scale(1) translateY(0);}
+      14% {transform:scale(.96) translateY(3px);}
+      72% {transform:scale(1) translateY(0);}
+      86% {transform:scale(1.04) translateY(-4px);}
+      100%{transform:scale(1) translateY(0);}
+    }
     .pulsing{animation:pulse 1.8s ease-in-out infinite;}
+
+    @media (prefers-reduced-motion:reduce){
+      .c-face{animation-duration:.01ms!important;}
+      .shuffling .rf{animation-duration:.01ms!important;}
+      #deck-slot.deck-low{animation:none!important;}
+      .pulsing,#start-ico,#start-tap{animation:none!important;}
+    }
   </style>
 </head>
 <body>
@@ -228,14 +285,15 @@
   <div id="main">
     <div class="side">
       <div class="side-lbl">DECK</div>
-      <div class="card-slot" id="deck-slot" onclick="draw()"></div>
+      <div class="card-slot" id="deck-slot" role="button" tabindex="0"
+           aria-label="카드 뽑기" onclick="draw()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();draw();}"></div>
       <div class="side-hint" id="deck-hint">탭하여 뽑기</div>
     </div>
-    <div id="arrow">▶</div>
+    <div id="arrow" aria-hidden="true">▶</div>
     <div class="side">
       <div class="side-lbl">DRAWN</div>
-      <div class="card-slot" id="drawn-slot"></div>
-      <div id="drawn-lbl"></div>
+      <div class="card-slot" id="drawn-slot" aria-live="polite"></div>
+      <div id="drawn-lbl" aria-hidden="true"></div>
     </div>
   </div>
 </div>
@@ -315,6 +373,51 @@ function playFlipSound(){
   osc.start(t+0.04); osc.stop(t+0.11);
 }
 
+// Layered "riffle" shuffle sound: 4 short noise bursts with stagger
+// + a final low-pitched "tap" when the deck settles.
+function playShuffleSound(){
+  if(!audioCtx) initAudio();
+  if(!audioCtx) return;
+  if(audioCtx.state==='suspended'){ audioCtx.resume().catch(()=>{}); }
+  const t0=audioCtx.currentTime;
+  const burst=(when,centerHz,dur,gain)=>{
+    const buf=audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate*dur), audioCtx.sampleRate);
+    const ch=buf.getChannelData(0);
+    for(let i=0;i<ch.length;i++) ch[i]=(Math.random()*2-1);
+    const src=audioCtx.createBufferSource(); src.buffer=buf;
+    const filt=audioCtx.createBiquadFilter();
+    filt.type='bandpass'; filt.Q.value=1.6;
+    filt.frequency.setValueAtTime(centerHz,t0+when);
+    filt.frequency.exponentialRampToValueAtTime(centerHz*1.6,t0+when+dur*0.7);
+    const g=audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001,t0+when);
+    g.gain.exponentialRampToValueAtTime(gain,t0+when+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+when+dur);
+    src.connect(filt); filt.connect(g); g.connect(audioCtx.destination);
+    src.start(t0+when); src.stop(t0+when+dur);
+  };
+  // 4 staggered "shf" bursts
+  burst(0.00, 900, 0.10, 0.14);
+  burst(0.13, 1100, 0.10, 0.13);
+  burst(0.28, 1000, 0.10, 0.13);
+  burst(0.46, 1200, 0.09, 0.12);
+  // Final settle "tap"
+  const osc=audioCtx.createOscillator();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(220, t0+0.95);
+  osc.frequency.exponentialRampToValueAtTime(120, t0+1.05);
+  const og=audioCtx.createGain();
+  og.gain.setValueAtTime(0.0001, t0+0.95);
+  og.gain.exponentialRampToValueAtTime(0.10, t0+0.97);
+  og.gain.exponentialRampToValueAtTime(0.0001, t0+1.10);
+  osc.connect(og); og.connect(audioCtx.destination);
+  osc.start(t0+0.95); osc.stop(t0+1.12);
+}
+
+function vibrate(pattern){
+  try{ if(navigator.vibrate) navigator.vibrate(pattern); }catch(_){}
+}
+
 function shuffle(a){
   a=[...a];
   for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
@@ -342,7 +445,8 @@ function calcCardSize(){
   });
 }
 
-function renderDeck(){
+function renderDeck(opts){
+  opts = opts || {};
   const slot=document.getElementById('deck-slot');
   const hint=document.getElementById('deck-hint');
   const empty=deck.length===0;
@@ -354,30 +458,48 @@ function renderDeck(){
   }
 
   if(phase==='shuffling'){
-    const bgs=['linear-gradient(135deg,#A5D6A7,#66BB6A)','linear-gradient(135deg,#C8E6C9,#81C784)','linear-gradient(135deg,#81C784,#A5D6A7)'];
-    ['sc1','sc2','sc3'].forEach((c,i)=>{
-      html+=`<div class="${c}" style="position:absolute;inset:0;border-radius:13px;background:${bgs[i]};border:2.5px solid #66BB6A"></div>`;
+    // 6 layered riffle cards (3 left half, 3 right half) + a press wrapper for compress/settle.
+    html+=`<div class="rf rfPress" style="z-index:0;background:linear-gradient(135deg,#A5D6A7,#66BB6A);"></div>`;
+    ['rfL1','rfL2','rfL3','rfR1','rfR2','rfR3'].forEach((c,i)=>{
+      const bg = i<3
+        ? 'linear-gradient(115deg,#E8F5E9,#A5D6A7)'
+        : 'linear-gradient(245deg,#E8F5E9,#A5D6A7)';
+      html+=`<div class="rf ${c}" style="z-index:${i+1};background:${bg};"></div>`;
     });
     slot.classList.add('shuffling');
   } else {
     slot.classList.remove('shuffling');
   }
 
+  // Tension cue: last 5 cards
+  slot.classList.toggle('deck-low', !empty && deck.length<=5 && phase!=='shuffling');
+
   if(empty){
-    hint.textContent='탭하여 셔플';
-    slot.classList.add('pulsing');
-    const txt=phase==='shuffling'?'셔플 중...':'탭하여 셔플!';
-    html+=`<div class="c-empty"><div class="c-empty-ico">🔀</div><div class="c-empty-txt">${txt}</div></div>`;
+    hint.textContent= phase==='shuffling' ? '셔플 중...' : '탭하여 셔플';
+    if(phase!=='shuffling') slot.classList.add('pulsing'); else slot.classList.remove('pulsing');
+    if(phase!=='shuffling'){
+      const txt='탭하여 셔플!';
+      html+=`<div class="c-empty"><div class="c-empty-ico">🔀</div><div class="c-empty-txt">${txt}</div></div>`;
+    }
   } else {
     hint.textContent='탭하여 뽑기';
     slot.classList.remove('pulsing');
     html+=`<div class="c-back"><div class="c-back-ring"></div><div class="c-back-ico">🐰</div><div class="c-back-row"><span class="c-back-mini">🥕</span><span class="c-back-txt">CARROT</span><span class="c-back-mini">🥕</span></div></div>`;
-    html+=`<div class="deck-badge">${deck.length}</div>`;
+    const badgeCls = opts.badgePop ? 'deck-badge popping' : (opts.countChanged ? 'deck-badge changing' : 'deck-badge');
+    html+=`<div class="${badgeCls}"><span class="num">${deck.length}</span></div>`;
   }
   slot.innerHTML=html;
+
+  // Update aria label so screen readers announce remaining count
+  if(empty){
+    slot.setAttribute('aria-label', phase==='shuffling' ? '셔플 진행 중' : '덱이 비었습니다. 탭하여 셔플');
+  } else {
+    slot.setAttribute('aria-label', `카드 뽑기, 남은 ${deck.length}장`);
+  }
 }
 
-function renderDrawn(){
+function renderDrawn(opts){
+  opts = opts || {};
   const slot=document.getElementById('drawn-slot');
   const lbl=document.getElementById('drawn-lbl');
   if(!drawn){
@@ -409,7 +531,21 @@ function renderDrawn(){
            <div class="c-dots">${ds}</div>`;
   }
 
-  slot.innerHTML=`<div class="c-face" style="background:${bg};border-color:${info.border}">
+  // Card travels from deck slot → drawn slot. Compute the delta (deck is on the left).
+  // Falls back to plain flipIn when not triggered by an actual draw (e.g. resize/redraw).
+  let anim = 'flipIn .46s cubic-bezier(.25,.46,.45,.94)';
+  let txStyle = '';
+  if(opts.travel){
+    const deckEl=document.getElementById('deck-slot');
+    const drawnEl=document.getElementById('drawn-slot');
+    const dr=deckEl.getBoundingClientRect();
+    const dw=drawnEl.getBoundingClientRect();
+    const tx = Math.round(dr.left - dw.left); // negative = deck is to the left
+    txStyle = `--tx:${tx}px;`;
+    anim = 'cardTravel .48s cubic-bezier(.34,1.56,.64,1)';
+  }
+
+  slot.innerHTML=`<div class="c-face" style="${txStyle}background:${bg};border-color:${info.border};animation:${anim}">
     ${clouds}
     <div class="c-badge" style="background:${info.border}">${info.label}</div>
     ${inner}
@@ -449,24 +585,40 @@ function renderDebug(){
 function draw(){
   if(phase!=='idle') return;
   if(deck.length===0){
+    // Shuffle flow: compress → riffle → settle → reveal
     phase='shuffling';
+    playShuffleSound();
+    vibrate([30,60,30,60,40]);
     renderDeck();
     setTimeout(()=>{
+      // After the riffle finishes, regenerate the deck and pop the count badge in.
       deck=makeDeck(); drawn=null; counts={}; chips=[];
       renderDrawn(); updateBar();
-      setTimeout(()=>{ phase='idle'; renderDeck(); if(debugOpen) renderDebug(); }, 500);
-    }, 1300);
+      phase='idle';
+      renderDeck({badgePop:true});
+      if(debugOpen) renderDebug();
+    }, 1400);
     return;
   }
   phase='flipping';
   playFlipSound();
+  vibrate(8);
   const card=deck.pop();
   drawn=card;
   counts[card.type]=(counts[card.type]||0)+1;
   chips=[card,...chips].slice(0,10);
-  renderDeck(); renderDrawn(); updateBar();
+  // Render drawn card BEFORE deck so geometry (deck still on screen) is correct for travel anim.
+  renderDrawn({travel:true});
+  renderDeck({countChanged:true});
+  updateBar();
+  // Subtle lift on the deck the moment a card is pulled away.
+  const deckEl=document.getElementById('deck-slot');
+  deckEl.classList.remove('lifting');
+  // force reflow so animation restarts even if user taps rapidly
+  void deckEl.offsetWidth;
+  deckEl.classList.add('lifting');
   if(debugOpen) renderDebug();
-  setTimeout(()=>{ phase='idle'; },480);
+  setTimeout(()=>{ phase='idle'; deckEl.classList.remove('lifting'); },480);
 }
 
 function toggleDebug(){
